@@ -1,4 +1,4 @@
-package app.project.kelompokgaul.ui.theme
+package com.fitcast.cuacagaya.ui.theme
 
 import androidx.compose.ui.graphics.Color
 

@@ -4,19 +4,22 @@ plugins {
 }
 
 android {
-    namespace = "app.project.kelompokgaul"
+    namespace = "com.fitcast.cuacagaya"
     compileSdk {
         version = release(37)
     }
 
     defaultConfig {
-        applicationId = "app.project.kelompokgaul"
+        applicationId = "com.fitcast.cuacagaya"
         minSdk = 26
         targetSdk = 37
         versionCode = 1
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        val weatherApiKey: String = project.findProperty("WEATHER_API_KEY") as? String ?: ""
+        buildConfigField("String", "WEATHER_API_KEY", "\"$weatherApiKey\"")
     }
 
     buildTypes {
@@ -32,6 +35,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 

@@ -1,6 +1,11 @@
 package com.fitcast.cuacagaya.ui.navigation
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -11,6 +16,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -18,6 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -54,6 +61,25 @@ fun FitCastAppRoot(
             }
         )
         return
+    }
+
+    // Request Android 13+ notification permission once after onboarding for 06:30 Morning Briefing.
+    val notifPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) {
+        prefs.edit { putBoolean("notif_perm_requested", true) }
+    }
+
+    LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            !prefs.getBoolean("notif_perm_requested", false) &&
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notifPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
     }
 
     val navController = rememberNavController()
@@ -104,6 +130,7 @@ fun FitCastAppRoot(
                     viewModel = wardrobeViewModel,
                     onAddClick = { navController.navigate("add_item") },
                     weather = homeState.weather,
+                    isLoadingWeather = homeState.isLoadingWeather,
                     onAboutClick = { navController.navigate("about") },
                     onRefreshGps = homeViewModel::refreshWeatherByGps,
                     onSelectCity = homeViewModel::refreshWeatherByCity
@@ -133,6 +160,7 @@ fun FitCastAppRoot(
                 LaundryScreen(
                     viewModel = wardrobeViewModel,
                     weather = homeState.weather,
+                    isLoadingWeather = homeState.isLoadingWeather,
                     onAboutClick = { navController.navigate("about") },
                     onRefreshGps = homeViewModel::refreshWeatherByGps,
                     onSelectCity = homeViewModel::refreshWeatherByCity

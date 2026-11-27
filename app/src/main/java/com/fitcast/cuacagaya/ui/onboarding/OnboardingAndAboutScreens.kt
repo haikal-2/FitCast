@@ -38,8 +38,10 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
@@ -386,8 +388,10 @@ fun OnboardingWeatherAlertPage(
             .background(OnboardingDarkCanvas)
             .statusBarsPadding()
             .navigationBarsPadding()
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp, vertical = 12.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.SpaceBetween
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -420,7 +424,7 @@ fun OnboardingWeatherAlertPage(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f),
+                .padding(vertical = 12.dp),
             contentAlignment = Alignment.Center
         ) {
             LockscreenWeatherNotificationMockup()
@@ -695,8 +699,10 @@ fun OnboardingSmartWardrobePage(
                 .fillMaxSize()
                 .statusBarsPadding()
                 .navigationBarsPadding()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp, vertical = 12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -766,7 +772,7 @@ fun OnboardingSmartWardrobePage(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f),
+                    .padding(vertical = 8.dp),
                 contentAlignment = Alignment.Center
             ) {
                 SmartWardrobeCollage()

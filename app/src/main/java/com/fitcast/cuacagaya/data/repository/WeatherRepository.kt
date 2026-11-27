@@ -1,8 +1,10 @@
 package com.fitcast.cuacagaya.data.repository
 
-import android.annotation.SuppressLint
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.location.Location
+import androidx.core.content.ContextCompat
 import com.fitcast.cuacagaya.BuildConfig
 import com.fitcast.cuacagaya.data.local.dao.WeatherDao
 import com.fitcast.cuacagaya.data.local.entity.WeatherCacheEntity
@@ -10,8 +12,10 @@ import com.fitcast.cuacagaya.data.remote.WeatherApiService
 import com.fitcast.cuacagaya.data.remote.dto.WeatherResponseDto
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
+import com.google.android.gms.tasks.CancellationTokenSource
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.resume
 
 class WeatherRepository(
@@ -22,52 +26,80 @@ class WeatherRepository(
     val cachedWeather: Flow<WeatherCacheEntity?> = weatherDao.observeWeather()
 
     suspend fun refreshWeatherByCity(cityName: String): Result<WeatherCacheEntity> {
+        val cleanCity = cityName.trim().ifBlank { "Bandung" }
+        val apiKey = BuildConfig.WEATHER_API_KEY
+        if (apiKey.isBlank()) {
+            val fallback = buildOfflineCityWeather(cleanCity)
+            weatherDao.saveWeather(fallback)
+            return Result.failure(IllegalStateException("WEATHER_API_KEY kosong, memakai data offline"))
+        }
+
         return try {
             val dto = apiService.getWeatherByCity(
-                city = cityName,
-                apiKey = BuildConfig.WEATHER_API_KEY
+                city = cleanCity,
+                apiKey = apiKey
             )
-            val entity = mapDtoToEntity(dto, fallbackCity = cityName)
+            val entity = mapDtoToEntity(dto, fallbackCity = cleanCity)
             weatherDao.saveWeather(entity)
             Result.success(entity)
         } catch (e: Exception) {
-            val fallback = weatherDao.getCachedWeather() ?: defaultOfflineWeather(cityName)
+            val existing = weatherDao.getCachedWeather()
+            val fallback = if (existing != null && existing.cityName.equals(cleanCity, ignoreCase = true)) {
+                existing
+            } else {
+                buildOfflineCityWeather(cleanCity)
+            }
             weatherDao.saveWeather(fallback)
             Result.failure(e)
         }
     }
 
     suspend fun refreshWeatherByCurrentLocation(): Result<WeatherCacheEntity> {
-        val location = getCurrentLocation()
-        return if (location != null) {
+        val apiKey = BuildConfig.WEATHER_API_KEY
+        val location = withTimeoutOrNull(8_000L) { getCurrentLocation() }
+        return if (location != null && apiKey.isNotBlank()) {
             try {
                 val dto = apiService.getWeatherByCoords(
                     lat = location.latitude,
                     lon = location.longitude,
-                    apiKey = BuildConfig.WEATHER_API_KEY
+                    apiKey = apiKey
                 )
                 val entity = mapDtoToEntity(dto, fallbackCity = "Lokasi Saat Ini")
                 weatherDao.saveWeather(entity)
                 Result.success(entity)
             } catch (e: Exception) {
-                val fallback = weatherDao.getCachedWeather() ?: defaultOfflineWeather("Bandung")
+                val fallback = weatherDao.getCachedWeather() ?: buildOfflineCityWeather("Bandung")
                 weatherDao.saveWeather(fallback)
                 Result.failure(e)
             }
         } else {
-            refreshWeatherByCity("Bandung")
+            refreshWeatherByCity(weatherDao.getCachedWeather()?.cityName ?: "Bandung")
         }
     }
 
-    @SuppressLint("MissingPermission")
-    private suspend fun getCurrentLocation(): Location? = suspendCancellableCoroutine { cont ->
-        try {
-            val client = LocationServices.getFusedLocationProviderClient(context)
-            client.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, null)
-                .addOnSuccessListener { location -> if (cont.isActive) cont.resume(location) }
-                .addOnFailureListener { if (cont.isActive) cont.resume(null) }
-        } catch (_: SecurityException) {
-            if (cont.isActive) cont.resume(null)
+    private suspend fun getCurrentLocation(): Location? {
+        val fineGranted = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+        val coarseGranted = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!fineGranted && !coarseGranted) return null
+
+        return suspendCancellableCoroutine { cont ->
+            val tokenSource = CancellationTokenSource()
+            cont.invokeOnCancellation { tokenSource.cancel() }
+            try {
+                val client = LocationServices.getFusedLocationProviderClient(context)
+                client.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, tokenSource.token)
+                    .addOnSuccessListener { location -> if (cont.isActive) cont.resume(location) }
+                    .addOnFailureListener { if (cont.isActive) cont.resume(null) }
+                    .addOnCanceledListener { if (cont.isActive) cont.resume(null) }
+            } catch (_: SecurityException) {
+                if (cont.isActive) cont.resume(null)
+            }
         }
     }
 
@@ -96,15 +128,29 @@ class WeatherRepository(
         )
     }
 
-    private fun defaultOfflineWeather(city: String) = WeatherCacheEntity(
-        id = 1,
-        cityName = "$city (Mode Offline)",
-        temperature = 24.0,
-        feelsLike = 25.0,
-        humidity = 75,
-        windSpeed = 2.5,
-        weatherMain = "Clouds",
-        weatherDescription = "Berawan (Data Cache)",
-        rainProbability = 40
-    )
+    private fun buildOfflineCityWeather(city: String): WeatherCacheEntity {
+        val presetTemp = when (city.lowercase()) {
+            "jakarta", "surabaya", "depok" -> 31.0
+            "bogor" -> 23.0
+            "yogyakarta" -> 28.0
+            else -> 24.0
+        }
+        val presetRain = when (city.lowercase()) {
+            "bogor" -> 80
+            "bandung" -> 60
+            else -> 30
+        }
+        return WeatherCacheEntity(
+            id = 1,
+            cityName = city,
+            temperature = presetTemp,
+            feelsLike = presetTemp + 1.0,
+            humidity = if (presetRain >= 60) 78 else 65,
+            windSpeed = 2.8,
+            weatherMain = if (presetRain >= 60) "Rain" else "Clouds",
+            weatherDescription = if (presetRain >= 60) "Berawan tebal (Cache Offline)" else "Berawan nyaman (Cache Offline)",
+            rainProbability = presetRain,
+            lastUpdated = System.currentTimeMillis()
+        )
+    }
 }

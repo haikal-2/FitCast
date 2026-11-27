@@ -44,6 +44,7 @@ import androidx.compose.material.icons.rounded.Checkroom
 import androidx.compose.material.icons.rounded.DryCleaning
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.LocalLaundryService
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -93,6 +94,7 @@ fun FitCastTopBar(
     onNotificationClick: () -> Unit,
     onProfileClick: () -> Unit,
     modifier: Modifier = Modifier,
+    isLoadingWeather: Boolean = false,
     hasUnreadNotification: Boolean = true,
     notificationBadgeColor: Color = ElectricCobalt,
     weatherIconTint: Color = VoltLime
@@ -146,12 +148,20 @@ fun FitCastTopBar(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Cloud,
-                            contentDescription = null,
-                            tint = weatherIconTint,
-                            modifier = Modifier.size(16.dp)
-                        )
+                        if (isLoadingWeather) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(14.dp),
+                                strokeWidth = 2.dp,
+                                color = VoltLime
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Outlined.Cloud,
+                                contentDescription = null,
+                                tint = weatherIconTint,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
                         Text(
                             text = "$cityName • $temperatureCelsius°C",
                             fontFamily = PlusJakartaSans,

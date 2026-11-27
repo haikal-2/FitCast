@@ -4,6 +4,8 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.graphics.Matrix
+import androidx.exifinterface.media.ExifInterface
 import android.net.Uri
 import androidx.core.graphics.scale
 import androidx.palette.graphics.Palette
@@ -80,7 +82,6 @@ class ImageProcessor(private val context: Context) {
         removeBackground: Boolean = true,
         existingPreviewPath: String? = null
     ): ProcessedClothingImage? = withContext(Dispatchers.IO) {
-        // Reuse already segmented preview when available to avoid double ML Kit inference.
         if (!existingPreviewPath.isNullOrBlank()) {
             val previewFile = File(existingPreviewPath)
             if (previewFile.exists()) {
@@ -232,7 +233,7 @@ class ImageProcessor(private val context: Context) {
         }
     }
 
-    // Two-pass subsampled decode prevents OOM on high-resolution 12MP-50MP camera images.
+    // Two-pass subsampled decode + EXIF rotation prevents OOM and sideways camera photos.
     private fun decodeSampledBitmap(uri: Uri, maxSize: Int = 960): Bitmap? {
         return try {
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -257,18 +258,46 @@ class ImageProcessor(private val context: Context) {
                 BitmapFactory.decodeStream(stream, null, decodeOpts)
             } ?: return null
 
-            val ratio = minOf(maxSize.toFloat() / sampled.width, maxSize.toFloat() / sampled.height, 1f)
+            val oriented = applyExifOrientation(uri, sampled)
+            val ratio = minOf(maxSize.toFloat() / oriented.width, maxSize.toFloat() / oriented.height, 1f)
             if (ratio >= 0.99f) {
-                sampled
+                oriented
             } else {
-                val targetW = (sampled.width * ratio).toInt().coerceAtLeast(1)
-                val targetH = (sampled.height * ratio).toInt().coerceAtLeast(1)
-                val scaled = sampled.scale(targetW, targetH)
-                if (scaled !== sampled) sampled.recycle()
+                val targetW = (oriented.width * ratio).toInt().coerceAtLeast(1)
+                val targetH = (oriented.height * ratio).toInt().coerceAtLeast(1)
+                val scaled = oriented.scale(targetW, targetH)
+                if (scaled !== oriented) oriented.recycle()
                 scaled
             }
         } catch (_: Throwable) {
             null
         }
+    }
+
+    private fun applyExifOrientation(uri: Uri, bitmap: Bitmap): Bitmap {
+        val orientation = runCatching {
+            context.contentResolver.openInputStream(uri)?.use { stream ->
+                ExifInterface(stream).getAttributeInt(
+                    ExifInterface.TAG_ORIENTATION,
+                    ExifInterface.ORIENTATION_NORMAL
+                )
+            }
+        }.getOrNull() ?: ExifInterface.ORIENTATION_NORMAL
+
+        val matrix = Matrix()
+        when (orientation) {
+            ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
+            ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
+            ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
+            ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.preScale(-1f, 1f)
+            ExifInterface.ORIENTATION_FLIP_VERTICAL -> matrix.preScale(1f, -1f)
+            else -> return bitmap
+        }
+
+        return runCatching {
+            val rotated = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+            if (rotated !== bitmap) bitmap.recycle()
+            rotated
+        }.getOrDefault(bitmap)
     }
 }

@@ -61,6 +61,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -99,6 +101,7 @@ private enum class LaundryFilterTab(val label: String) {
 fun LaundryScreen(
     viewModel: WardrobeViewModel,
     weather: WeatherCacheEntity? = null,
+    isLoadingWeather: Boolean = false,
     onAboutClick: () -> Unit = {},
     onRefreshGps: () -> Unit = {},
     onSelectCity: (String) -> Unit = {}
@@ -110,12 +113,19 @@ fun LaundryScreen(
 
     var showCityDialog by remember { mutableStateOf(false) }
     var showNotificationDialog by remember { mutableStateOf(false) }
+    var locationDenied by remember { mutableStateOf(false) }
     val recentlyWashedIds = remember { mutableStateListOf<Long>() }
 
     val locationLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { perms ->
-        if (perms.values.any { it }) onRefreshGps() else showCityDialog = true
+        if (perms.values.any { it }) {
+            locationDenied = false
+            onRefreshGps()
+        } else {
+            locationDenied = true
+            showCityDialog = true
+        }
     }
 
     LaundryScreenContent(
@@ -123,6 +133,7 @@ fun LaundryScreen(
         dirtyItems = dirtyItems,
         recentlyWashedIds = recentlyWashedIds,
         weather = weather,
+        isLoadingWeather = isLoadingWeather,
         snackbarHostState = snackbarHostState,
         onLocationClick = { showCityDialog = true },
         onNotificationClick = { showNotificationDialog = true },
@@ -152,6 +163,7 @@ fun LaundryScreen(
     if (showCityDialog) {
         CityPickerDialog(
             currentCity = weather?.cityName ?: "Bandung",
+            showSettingsShortcut = locationDenied,
             onUseGps = {
                 showCityDialog = false
                 locationLauncher.launch(
@@ -184,6 +196,7 @@ private fun LaundryScreenContent(
     dirtyItems: List<WardrobeItemEntity>,
     recentlyWashedIds: List<Long>,
     weather: WeatherCacheEntity?,
+    isLoadingWeather: Boolean,
     snackbarHostState: SnackbarHostState,
     onLocationClick: () -> Unit,
     onNotificationClick: () -> Unit,
@@ -192,6 +205,7 @@ private fun LaundryScreenContent(
     onMarkAllWashed: () -> Unit
 ) {
     val fitColors = FitCastTheme.colors
+    val haptic = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
 
     var selectedFilter by remember { mutableStateOf(LaundryFilterTab.ALL) }
@@ -231,6 +245,7 @@ private fun LaundryScreenContent(
 
     fun triggerAnimatedWash(item: WardrobeItemEntity) {
         if (confirmingIds.contains(item.id) || collapsingIds.contains(item.id)) return
+        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
         scope.launch {
             confirmingIds = confirmingIds + item.id
             delay(280L)
@@ -243,7 +258,8 @@ private fun LaundryScreenContent(
     }
 
     fun triggerAnimatedWashAll() {
-        if (dirtyItems.isEmpty()) return
+        if (dirtyItems.isEmpty() || confirmingIds.isNotEmpty() || collapsingIds.isNotEmpty()) return
+        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
         val targets = dirtyItems.map { it.id }.toSet()
         scope.launch {
             confirmingIds = confirmingIds + targets
@@ -255,6 +271,8 @@ private fun LaundryScreenContent(
             collapsingIds = collapsingIds - targets
         }
     }
+
+    val isWashingBatch = confirmingIds.isNotEmpty() || collapsingIds.isNotEmpty()
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -271,6 +289,7 @@ private fun LaundryScreenContent(
                 onLocationClick = onLocationClick,
                 onNotificationClick = onNotificationClick,
                 onProfileClick = onProfileClick,
+                isLoadingWeather = isLoadingWeather,
                 hasUnreadNotification = dirtyItems.isNotEmpty(),
                 notificationBadgeColor = LaundryRed,
                 weatherIconTint = PureWhite.copy(alpha = 0.85f)
@@ -321,7 +340,7 @@ private fun LaundryScreenContent(
 
                     Button(
                         onClick = { triggerAnimatedWashAll() },
-                        enabled = dirtyItems.isNotEmpty(),
+                        enabled = dirtyItems.isNotEmpty() && !isWashingBatch,
                         shape = CircleShape,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = VoltLime,
@@ -427,14 +446,14 @@ private fun LaundryScreenContent(
                                     fontFamily = PlusJakartaSans,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
                                     fontSize = 12.sp,
-                                    color = if (isSelected) PureWhite else ObsidianDark
+                                    color = if (isSelected) PureWhite else fitColors.onSoftIceTint
                                 )
                                 if (tab == LaundryFilterTab.ALL) {
                                     Box(
                                         modifier = Modifier
                                             .defaultMinSize(minWidth = 20.dp, minHeight = 20.dp)
                                             .clip(CircleShape)
-                                            .background(if (isSelected) VoltLime else ObsidianDark.copy(alpha = 0.12f))
+                                            .background(if (isSelected) VoltLime else fitColors.onSoftIceTint.copy(alpha = 0.14f))
                                             .padding(horizontal = 5.dp),
                                         contentAlignment = Alignment.Center
                                     ) {
@@ -443,7 +462,7 @@ private fun LaundryScreenContent(
                                             fontFamily = PlusJakartaSans,
                                             fontWeight = FontWeight.ExtraBold,
                                             fontSize = 10.sp,
-                                            color = ObsidianDark
+                                            color = if (isSelected) ObsidianDark else fitColors.onSoftIceTint
                                         )
                                     }
                                 }
@@ -581,7 +600,7 @@ private fun LaundryScreenContent(
                                 fontFamily = PlusJakartaSans,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 11.sp,
-                                color = ObsidianDark,
+                                color = fitColors.onSoftIceTint,
                                 modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp)
                             )
                         }
@@ -613,13 +632,16 @@ private fun LaundryScreenContent(
                 }
             }
 
-            // Compact clean item cards
+            // Compact clean item cards with smooth placement animation
             items(
                 items = visibleCleanItems,
                 key = { "clean_${it.id}" },
                 contentType = { "cleanItemCard" }
             ) { item ->
-                RecentlyWashedCompactCard(item = item)
+                RecentlyWashedCompactCard(
+                    item = item,
+                    modifier = Modifier.animateItem()
+                )
             }
         }
     }
@@ -629,8 +651,20 @@ private fun LaundryScreenContent(
 private fun CycleRecommendationCard(dirtyItems: List<WardrobeItemEntity>) {
     val fitColors = FitCastTheme.colors
     val count = dirtyItems.size
-    val waterLiters = if (count == 0) 0 else 10 + (count * 4)
-    val spinMinutes = if (count == 0) 0 else 25 + (count * 5)
+    val waterLiters = if (count == 0) 0 else 10 + dirtyItems.sumOf { item ->
+        when (item.warmthLevel) {
+            WarmthLevel.HEAVY -> 5
+            WarmthLevel.MEDIUM -> 4
+            else -> 3
+        }
+    }
+    val spinMinutes = if (count == 0) 0 else 25 + dirtyItems.sumOf { item ->
+        when (item.warmthLevel) {
+            WarmthLevel.HEAVY -> 6
+            WarmthLevel.MEDIUM -> 5
+            else -> 4
+        }
+    }
 
     val summaryText = remember(dirtyItems) {
         when (dirtyItems.size) {
@@ -989,14 +1023,17 @@ private fun LaundryQueueCard(
 }
 
 @Composable
-private fun RecentlyWashedCompactCard(item: WardrobeItemEntity) {
+private fun RecentlyWashedCompactCard(
+    item: WardrobeItemEntity,
+    modifier: Modifier = Modifier
+) {
     val fitColors = FitCastTheme.colors
     Surface(
         shape = RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, fitColors.subtleBorder),
         shadowElevation = 1.dp,
-        modifier = Modifier.fillMaxWidth()
+        modifier = modifier.fillMaxWidth()
     ) {
         Row(
             modifier = Modifier
@@ -1132,6 +1169,7 @@ private fun LaundryScreenPreview() {
             dirtyItems = listOf(dirty1, dirty2),
             recentlyWashedIds = emptyList(),
             weather = null,
+            isLoadingWeather = false,
             snackbarHostState = remember { SnackbarHostState() },
             onLocationClick = {},
             onNotificationClick = {},

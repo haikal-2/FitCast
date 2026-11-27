@@ -3,8 +3,13 @@ package com.fitcast.cuacagaya.ui.studio
 import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -42,6 +47,7 @@ import androidx.compose.material.icons.outlined.WaterDrop
 import androidx.compose.material.icons.rounded.Sync
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -64,6 +70,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -110,15 +118,19 @@ fun StudioScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+    val haptic = LocalHapticFeedback.current
     var showCityDialog by remember { mutableStateOf(false) }
     var showNotificationDialog by remember { mutableStateOf(false) }
+    var locationDenied by remember { mutableStateOf(false) }
 
     val locationLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { perms ->
         if (perms.values.any { it }) {
+            locationDenied = false
             viewModel.refreshWeatherByGps()
         } else {
+            locationDenied = true
             showCityDialog = true
         }
     }
@@ -136,17 +148,33 @@ fun StudioScreen(
         onLocationClick = { showCityDialog = true },
         onNotificationClick = { showNotificationDialog = true },
         onProfileClick = onAboutClick,
-        onShuffleClick = viewModel::shuffleOutfit,
-        onToggleLock = viewModel::toggleLock,
-        onToggleFavorite = viewModel::toggleFavoriteOutfit,
-        onQuickSwapItem = viewModel::selectItemForOutfit,
-        onWearOutfit = viewModel::wearCurrentOutfit,
+        onShuffleClick = {
+            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            viewModel.shuffleOutfit()
+        },
+        onToggleLock = { cat, item ->
+            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            viewModel.toggleLock(cat, item)
+        },
+        onToggleFavorite = {
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            viewModel.toggleFavoriteOutfit()
+        },
+        onQuickSwapItem = { item ->
+            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            viewModel.selectItemForOutfit(item)
+        },
+        onWearOutfit = {
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            viewModel.wearCurrentOutfit()
+        },
         onSeeAllWardrobe = onNavigateToWardrobe
     )
 
     if (showCityDialog) {
         CityPickerDialog(
             currentCity = state.weather?.cityName ?: "Bandung",
+            showSettingsShortcut = locationDenied,
             onUseGps = {
                 showCityDialog = false
                 locationLauncher.launch(
@@ -219,6 +247,7 @@ private fun StudioScreenContent(
                 onLocationClick = onLocationClick,
                 onNotificationClick = onNotificationClick,
                 onProfileClick = onProfileClick,
+                isLoadingWeather = state.isLoadingWeather,
                 hasUnreadNotification = true,
                 notificationBadgeColor = VoltLime
             )
@@ -294,6 +323,7 @@ private fun StudioScreenContent(
             // Editorial Preview Canvas with Interactive Hotspots & Floating Dock
             StudioEditorialCanvas(
                 recommendation = rec,
+                shuffleNonce = state.shuffleNonce,
                 tempInt = tempInt,
                 weatherPillLabel = weatherPillLabel,
                 lockedCategories = state.lockedCategories,
@@ -319,6 +349,7 @@ private fun StudioScreenContent(
             // Bottom Dark Editorial Panel
             StudioDarkControlPanel(
                 isRainy = isRainy,
+                isWearingOutfit = state.isWearingOutfit,
                 recommendation = rec,
                 wardrobeItems = state.wardrobeItems,
                 onWearOutfit = onWearOutfit,
@@ -332,6 +363,7 @@ private fun StudioScreenContent(
 @Composable
 private fun StudioEditorialCanvas(
     recommendation: RecommendedOutfit?,
+    shuffleNonce: Int,
     tempInt: Int,
     weatherPillLabel: String,
     lockedCategories: Set<String>,
@@ -345,6 +377,9 @@ private fun StudioEditorialCanvas(
     onDockFavoriteClick: () -> Unit
 ) {
     val activeSlotLocked = lockedCategories.contains(selectedSlot) || lockedCategories.isNotEmpty()
+    val flatLaySnapshot = remember(recommendation, shuffleNonce) {
+        shuffleNonce to recommendation
+    }
 
     Surface(
         shape = RoundedCornerShape(24.dp),
@@ -377,39 +412,46 @@ private fun StudioEditorialCanvas(
                     )
                 }
         ) {
-            // Layered editorial flat-lay composition
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 24.dp, vertical = 34.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                // Top (inner shirt layer)
-                GarmentVisualImage(
-                    item = recommendation?.top,
+            // Layered editorial flat-lay composition animated on Shuffle/Swap
+            AnimatedContent(
+                targetState = flatLaySnapshot,
+                transitionSpec = {
+                    (fadeIn(tween(240)) + scaleIn(initialScale = 0.94f, animationSpec = tween(240))) togetherWith
+                        fadeOut(tween(140))
+                },
+                modifier = Modifier.fillMaxSize(),
+                label = "studioFlatLayAnim"
+            ) { (_, targetRec) ->
+                Box(
                     modifier = Modifier
-                        .size(132.dp)
-                        .offset(x = (-10).dp, y = (-26).dp)
-                        .graphicsLayer { rotationZ = -3f }
-                )
-                // Outer jacket framing top
-                if (recommendation?.outer != null) {
+                        .fillMaxSize()
+                        .padding(horizontal = 24.dp, vertical = 34.dp),
+                    contentAlignment = Alignment.Center
+                ) {
                     GarmentVisualImage(
-                        item = recommendation.outer,
+                        item = targetRec?.top,
                         modifier = Modifier
-                            .size(164.dp)
-                            .offset(x = (-32).dp, y = (-52).dp)
-                            .graphicsLayer { rotationZ = -6f }
+                            .size(132.dp)
+                            .offset(x = (-10).dp, y = (-26).dp)
+                            .graphicsLayer { rotationZ = -3f }
+                    )
+                    if (targetRec?.outer != null) {
+                        GarmentVisualImage(
+                            item = targetRec.outer,
+                            modifier = Modifier
+                                .size(164.dp)
+                                .offset(x = (-32).dp, y = (-52).dp)
+                                .graphicsLayer { rotationZ = -6f }
+                        )
+                    }
+                    GarmentVisualImage(
+                        item = targetRec?.bottom,
+                        modifier = Modifier
+                            .size(144.dp)
+                            .offset(x = 18.dp, y = 76.dp)
+                            .graphicsLayer { rotationZ = 10f }
                     )
                 }
-                // Bottom folded trousers angled below
-                GarmentVisualImage(
-                    item = recommendation?.bottom,
-                    modifier = Modifier
-                        .size(144.dp)
-                        .offset(x = 18.dp, y = 76.dp)
-                        .graphicsLayer { rotationZ = 10f }
-                )
             }
 
             // Top-left white weather pill
@@ -447,7 +489,7 @@ private fun StudioEditorialCanvas(
                 }
             }
 
-            // Interactive Hotspot Pin 1: Outer
+            // Interactive Hotspot Pin 1: Outer (end=72dp clears the right floating dock on 360dp)
             val outerItem = recommendation?.outer
             if (outerItem != null) {
                 HotspotPinLabel(
@@ -457,7 +499,7 @@ private fun StudioEditorialCanvas(
                     onClick = { onHotspotTap(WardrobeCategory.OUTER, outerItem) },
                     modifier = Modifier
                         .align(Alignment.TopStart)
-                        .padding(start = 16.dp, top = 76.dp)
+                        .padding(start = 16.dp, top = 76.dp, end = 72.dp)
                 )
             }
 
@@ -720,6 +762,7 @@ private fun StudioDockCircleButton(
 @Composable
 private fun StudioDarkControlPanel(
     isRainy: Boolean,
+    isWearingOutfit: Boolean,
     recommendation: RecommendedOutfit?,
     wardrobeItems: List<WardrobeItemEntity>,
     onWearOutfit: () -> Unit,
@@ -794,6 +837,7 @@ private fun StudioDarkControlPanel(
 
                 Button(
                     onClick = onWearOutfit,
+                    enabled = !isWearingOutfit,
                     shape = CircleShape,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = VoltLime,
@@ -802,14 +846,22 @@ private fun StudioDarkControlPanel(
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
                     modifier = Modifier.defaultMinSize(minHeight = 44.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Outlined.CheckCircle,
-                        contentDescription = null,
-                        modifier = Modifier.size(17.dp)
-                    )
+                    if (isWearingOutfit) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                            color = ObsidianDark
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Outlined.CheckCircle,
+                            contentDescription = null,
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "Pakai",
+                        text = if (isWearingOutfit) "Menyimpan..." else "Pakai",
                         fontFamily = PlusJakartaSans,
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp

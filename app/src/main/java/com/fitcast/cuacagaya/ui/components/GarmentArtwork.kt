@@ -1,6 +1,5 @@
 package com.fitcast.cuacagaya.ui.components
 
-import android.graphics.Color as AndroidColor
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
@@ -20,16 +19,19 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.core.graphics.toColorInt
 import coil.compose.AsyncImage
 import com.fitcast.cuacagaya.data.local.entity.WardrobeCategory
 import com.fitcast.cuacagaya.data.local.entity.WardrobeItemEntity
 import java.io.File
 
+// Static drawable registry avoids reflection via Resources.getIdentifier.
+private val StaticGarmentDrawables: Map<String, Int> = emptyMap()
+
 fun parseGarmentColor(hex: String?, fallback: Color = Color(0xFF475569)): Color {
     if (hex.isNullOrBlank()) return fallback
-    return runCatching { Color(AndroidColor.parseColor(hex)) }.getOrDefault(fallback)
+    return runCatching { Color(hex.toColorInt()) }.getOrDefault(fallback)
 }
 
 @Composable
@@ -38,16 +40,12 @@ fun GarmentVisualImage(
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Crop
 ) {
-    val context = LocalContext.current
     val localFile = remember(item?.imagePath) {
         val path = item?.imagePath.orEmpty()
         if (path.isNotBlank()) File(path).takeIf { it.exists() } else null
     }
     val drawableResId = remember(item?.drawableResName) {
-        val resName = item?.drawableResName.orEmpty()
-        if (resName.isNotBlank()) {
-            context.resources.getIdentifier(resName, "drawable", context.packageName)
-        } else 0
+        StaticGarmentDrawables[item?.drawableResName.orEmpty()] ?: 0
     }
 
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
@@ -133,7 +131,6 @@ fun VectorGarmentSilhouette(
                 }
                 drawPath(jacketPath, brush = fabricBrush)
                 drawPath(jacketPath, color = seamColor, style = strokeStyle)
-                // Collar & central zipper
                 drawLine(seamColor, Offset(w * 0.50f, h * 0.19f), Offset(w * 0.50f, h * 0.85f), strokeStyle.width)
                 drawLine(seamColor, Offset(w * 0.34f, h * 0.58f), Offset(w * 0.43f, h * 0.68f), strokeStyle.width)
                 drawLine(seamColor, Offset(w * 0.66f, h * 0.58f), Offset(w * 0.57f, h * 0.68f), strokeStyle.width)
@@ -152,7 +149,6 @@ fun VectorGarmentSilhouette(
                 }
                 drawPath(pantsPath, brush = fabricBrush)
                 drawPath(pantsPath, color = seamColor, style = strokeStyle)
-                // Waistband and fly seam
                 drawLine(seamColor, Offset(w * 0.26f, h * 0.22f), Offset(w * 0.74f, h * 0.22f), strokeStyle.width)
                 drawLine(seamColor, Offset(w * 0.50f, h * 0.14f), Offset(w * 0.50f, h * 0.36f), strokeStyle.width)
             }
@@ -193,7 +189,6 @@ fun VectorGarmentSilhouette(
                 }
                 drawPath(teePath, brush = fabricBrush)
                 drawPath(teePath, color = seamColor, style = strokeStyle)
-                // Neckline rib
                 val collar = Path().apply {
                     moveTo(w * 0.38f, h * 0.17f)
                     quadraticTo(w * 0.50f, h * 0.27f, w * 0.62f, h * 0.17f)

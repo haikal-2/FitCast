@@ -25,12 +25,16 @@ class WardrobeAndLaundryLogicTest {
         private val outfitsFlow = MutableStateFlow<List<SavedOutfitEntity>>(emptyList())
         private var nextId = (initial.maxOfOrNull { it.id } ?: 0L) + 1L
 
-        override fun getAllItems(): Flow<List<WardrobeItemEntity>> = itemsFlow
-        override suspend fun getAllItemsOnce(): List<WardrobeItemEntity> = itemsFlow.value
+        override fun getAllItems(): Flow<List<WardrobeItemEntity>> =
+            itemsFlow.map { list -> list.filter { !it.isDraft } }
+        override fun getDraftItems(): Flow<List<WardrobeItemEntity>> =
+            itemsFlow.map { list -> list.filter { it.isDraft } }
+        override suspend fun getAllItemsOnce(): List<WardrobeItemEntity> =
+            itemsFlow.value.filter { !it.isDraft }
         override fun getDirtyItems(): Flow<List<WardrobeItemEntity>> =
-            itemsFlow.map { list -> list.filter { !it.isClean }.sortedByDescending { it.wearCount } }
+            itemsFlow.map { list -> list.filter { !it.isDraft && !it.isClean }.sortedByDescending { it.wearCount } }
 
-        override suspend fun getItemCount(): Int = itemsFlow.value.size
+        override suspend fun getItemCount(): Int = itemsFlow.value.count { !it.isDraft }
 
         override suspend fun insertItem(item: WardrobeItemEntity): Long {
             val assigned = if (item.id == 0L) item.copy(id = nextId++) else item
@@ -48,6 +52,12 @@ class WardrobeAndLaundryLogicTest {
 
         override suspend fun deleteItem(item: WardrobeItemEntity) {
             itemsFlow.value = itemsFlow.value.filterNot { it.id == item.id }
+        }
+
+        override suspend fun publishDraft(itemId: Long) {
+            itemsFlow.value = itemsFlow.value.map {
+                if (it.id == itemId) it.copy(isDraft = false) else it
+            }
         }
 
         override suspend fun markItemWashed(itemId: Long) {
@@ -223,5 +233,37 @@ class WardrobeAndLaundryLogicTest {
         assertEquals(listOf(2L), filterItems("ALL", "cream").map { it.id })
         assertEquals(listOf(3L), filterItems(WardrobeCategory.OUTER, "sport").map { it.id })
         assertTrue(filterItems("ALL", "jas hujan kuning").isEmpty())
+    }
+
+    @Test
+    fun `drafts stay separated until published and wearCount caps at maxWearBeforeWash`() = runBlocking {
+        val dao = InMemoryWardrobeDao(sampleWardrobe())
+        val repo = WardrobeRepository(dao)
+
+        val draftId = repo.addItem(
+            WardrobeItemEntity(
+                name = "Overshirt Draft",
+                category = WardrobeCategory.OUTER,
+                warmthLevel = WarmthLevel.MEDIUM,
+                style = OutfitStyle.CASUAL,
+                colorHex = "#3D5A40",
+                colorTone = ColorTone.COOL,
+                isDraft = true
+            )
+        )
+
+        assertEquals(4, repo.allItems.first().size)
+        assertEquals(1, repo.draftItems.first().size)
+
+        repo.publishDraft(draftId)
+        assertEquals(5, repo.allItems.first().size)
+        assertTrue(repo.draftItems.first().isEmpty())
+
+        // Wearing an already dirty item (4/4) caps at 4/4 instead of overflowing to 5/4
+        val hoodie = dao.getAllItemsOnce().first { it.id == 4L }
+        repo.wearItems(listOf(hoodie))
+        val updatedHoodie = repo.allItems.first().first { it.id == 4L }
+        assertEquals(4, updatedHoodie.wearCount)
+        assertFalse(updatedHoodie.isClean)
     }
 }

@@ -10,11 +10,13 @@ import java.io.File
 
 class WardrobeRepository(private val dao: WardrobeDao) {
     val allItems: Flow<List<WardrobeItemEntity>> = dao.getAllItems()
+    val draftItems: Flow<List<WardrobeItemEntity>> = dao.getDraftItems()
     val dirtyItems: Flow<List<WardrobeItemEntity>> = dao.getDirtyItems()
     val savedOutfits: Flow<List<SavedOutfitEntity>> = dao.getSavedOutfits()
 
     suspend fun addItem(item: WardrobeItemEntity): Long = dao.insertItem(item)
     suspend fun updateItem(item: WardrobeItemEntity) = dao.updateItem(item)
+    suspend fun publishDraft(id: Long) = dao.publishDraft(id)
 
     suspend fun deleteItem(item: WardrobeItemEntity) {
         dao.deleteItem(item)
@@ -43,8 +45,9 @@ class WardrobeRepository(private val dao: WardrobeDao) {
 
     suspend fun wearItems(items: List<WardrobeItemEntity>) {
         items.forEach { item ->
-            val nextWear = item.wearCount + 1
-            val stillClean = nextWear < item.maxWearBeforeWash
+            val maxWear = item.maxWearBeforeWash.coerceAtLeast(1)
+            val nextWear = (item.wearCount + 1).coerceAtMost(maxWear)
+            val stillClean = nextWear < maxWear
             dao.updateItem(item.copy(wearCount = nextWear, isClean = stillClean))
         }
     }

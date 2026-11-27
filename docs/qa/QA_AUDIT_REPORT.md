@@ -3,22 +3,23 @@
 - **Package:** `com.fitcast.cuacagaya`
 - **Target Audit:** Implementasi aktual dibandingkan referensi `docs/ui-reference/` (`01` s.d. `08`)
 - **Acuan Standar:** `android-skills`, `ui-ux-pro-max`, `mobile-skill`, `mobile-dev-skills`, `DESIGN.md`
-- **Tanggal Audit:** 27 November 2026
-- **Status Kode Aplikasi (`app/src/main/`):** Belum diubah (audit murni + penambahan unit test di `app/src/test/`)
+- **Tanggal Audit Awal:** 27 November 2026
+- **Tanggal Remediasi & Verifikasi Akhir:** 27 November 2026
+- **Status Kode Aplikasi (`app/src/main/`):** **SELURUH 16 TEMUAN TELAH DIPERBAIKI & TERVERIFIKASI** (`18/18` unit test lulus, `0` error kompilasi/Lint, `0` warning kode sumber)
 
 ---
 
 ## 1. Ringkasan Skor Kesiapan (Skala 0 - 100)
 
-| Pilar Audit | Skor | Status | Ringkasan Kondisi |
-| :--- | :---: | :---: | :--- |
-| **1. Sistem, Data & Anti-Crash** | **74 / 100** | Perlu Perbaikan | Room v2 + `StateFlow` + `collectAsStateWithLifecycle` sudah solid dan `BuildConfig` aman. Masih ada risiko OOM pada dekode bitmap resolusi tinggi, file gambar lokal yatim saat hapus item, potensi hang pada callback GPS/ML Kit tanpa `onCanceledListener`, serta `POST_NOTIFICATIONS` Android 13+ yang belum pernah diminta di UI. |
-| **2. Layout & Presisi Visual** | **82 / 100** | Baik (Ada Celah Dark Mode & 1.3x) | Struktur visual Light Mode sangat mendekati referensi `01` s.d. `08`, font `Plus Jakarta Sans` konsisten, dan `contentPadding` bawah sudah menghindari `FitCastFloatingBottomNav` dan FAB `+`. Namun terdapat masalah kontras teks gelap di atas `SoftIceTintDark` pada Dark Mode serta risiko clipping pada `360dp` dengan Font Scale `1.3x`. |
-| **3. Transisi & Mikro-Animasi** | **78 / 100** | Cukup Baik | Alur Splash ke Onboarding, backstack anti-kembali ke onboarding, morphing kapsul bottom bar, skala status `BERSIH`/`LAUNDRY`, dan animasi `Selesai Cuci` sudah berjalan baik. Masih kurang animasi `NavHost` (slide-up `AddItemScreen` dan crossfade tab), transisi `AnimatedContent` saat `Acak/Shuffle`, serta `Modifier.animateItem()` pada daftar "Baru Saja Dicuci". |
-| **4. Feedback APK per Fitur** | **72 / 100** | Perlu Peningkatan | Snackbar sudah tersedia di sebagian besar layar dan tidak tertutup bottom nav, serta tombol `Simpan ke Lemari` sudah punya indikator loading. Masih belum ada `HapticFeedback`, belum ada anti double-tap pada `Pakai Outfit` / `Cuci Semua`, `isLoadingWeather` belum divisualisasikan di UI, dan Draft belum punya tampilan lanjutan. |
-| **5. Logika Algoritma & Integritas Data** | **84 / 100** | Baik | Algoritma rekomendasi cuaca, lock item, fallback baju kotor, filter gaya, sinkronisasi `wearCount / maxWearBeforeWash`, dan metrik dinamis Laundry sudah terverifikasi lewat 16 unit test. Masih perlu mengecualikan `isDraft` di DAO/Engine, memanfaatkan `suitableWeathers`, serta memberi bobot ketebalan bahan pada estimasi air/waktu putar. |
-| **6. Automated Testing & Build** | **92 / 100** | Sangat Baik | `testDebugUnitTest` (16/16 PASS), `assembleDebug` (0 error, 0 warning Kotlin), dan `lintDebug` (0 error, 40 warning/advisory non-fatal). |
-| **Skor Gabungan Kesiapan** | **80 / 100** | **Siap Demo setelah Fix Prioritas** | Fondasi kuat; memperbaiki 1 temuan `CRITICAL` dan 7 temuan `HIGH` akan mengangkat kesiapan ke level produksi (>93/100). |
+| Pilar Audit | Skor Awal | Skor Akhir | Status Akhir | Ringkasan Kondisi Pasca-Remediasi |
+| :--- | :---: | :---: | :---: | :--- |
+| **1. Sistem, Data & Anti-Crash** | 74 / 100 | **96 / 100** | **PASS** | 2-pass bitmap sampling + `androidx.exifinterface` mencegah OOM/foto miring; file lokal PNG dihapus saat delete item; GPS/Weather/ML Kit kini punya timeout, `addOnCanceledListener`, cek API key kosong, dan `segmenter.close()`; `POST_NOTIFICATIONS` Android 13+ dan pintasan Settings lokasi sudah aktif; `MorningBriefingWorker` aman `try/catch`. |
+| **2. Layout & Presisi Visual** | 82 / 100 | **96 / 100** | **PASS** | Token semantik `onSoftIceTint` memperbaiki seluruh kontras Dark Mode di `WardrobeScreen`, `AddItemScreen`, dan `LaundryScreen`; `HomeScreen` memakai `fitColors.darkCardSurface`; Pin 1 Studio diberi `padding(end = 72.dp)`, Bento card `heightIn(min = 114.dp)`, dan halaman Onboarding mendukung `verticalScroll`. |
+| **3. Transisi & Mikro-Animasi** | 78 / 100 | **95 / 100** | **PASS** | `NavHost` menggunakan crossfade tab, slide-up untuk `add_item`, dan slide horizontal untuk `about`; `AnimatedContent` aktif pada Shuffle di `HomeScreen` dan `StudioScreen`; daftar `"Baru Saja Dicuci"` di `LaundryScreen` menggunakan `Modifier.animateItem()`. |
+| **4. Feedback APK per Fitur** | 72 / 100 | **95 / 100** | **PASS** | `HapticFeedback` terpasang di seluruh interaksi utama; guard anti double-tap aktif di `Pakai Outfit` (`isWearingOutfit`) dan `Cuci Semua`; indikator loading cuaca tampil di `FitCastTopBar`; banner khusus 0 baju bersih aktif di `HomeScreen`; Draft bisa dibuka ulang & dipublikasikan dari `WardrobeScreen`. |
+| **5. Logika Algoritma & Integritas Data** | 84 / 100 | **97 / 100** | **PASS** | Query `isDraft = 0` terpisah di `WardrobeDao` dan `OutfitRecommendationEngine`; bonus skor `+15` dari `suitableWeathers` aktif; `wearCount` dibatasi hingga `maxWearBeforeWash`; estimasi air/waktu putar Laundry kini memperhitungkan bobot `WarmthLevel` (`18 Liter (Eco)` / `35 Menit` untuk starter). |
+| **6. Automated Testing & Build** | 92 / 100 | **99 / 100** | **PASS** | `testDebugUnitTest` (**18/18 PASS**), `assembleDebug` (**0 error, 0 warning Kotlin**), `lintDebug` (**0 error, 0 warning kode sumber/manifest/resource**, tersisa 13 advisory versi dependensi di `gradle/libs.versions.toml`). |
+| **Skor Gabungan Kesiapan** | 80 / 100 | **96 / 100** | **SIAP DEMO & PRODUKSI** | Seluruh 1 temuan `CRITICAL`, 7 `HIGH`, 6 `MEDIUM`, dan 2 `POLISH` telah diselesaikan dan diverifikasi lewat build penuh. |
 
 ---
 
@@ -188,39 +189,39 @@
 
 ---
 
-## 3. Tabel Matrix Feedback & Transisi per Layar
+## 3. Tabel Matrix Feedback & Transisi per Layar (Pasca-Remediasi)
 
 | Layar | Referensi UI | Visual & Layout | Transisi & Animasi | Feedback (Loading / Snackbar / Haptic) | Empty / Offline / Error State | Status Keseluruhan |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
 | **Splash 1 (`SplashLaunchScreen`)** | `01` | PASS (Canvas siluet, gradien, progress bar) | PASS (auto 1.8s / tap + `Crossfade`) | PASS (tap responsif) | N/A | **PASS** |
-| **Onboarding 2 (`Peringatan Cuaca`)** | `02` | PASS (mockup lockscreen + glow Cobalt) | PASS (`HorizontalPager` + animated dot) | PASS (Lewati & Lanjut berfungsi) | N/A | **PASS** |
-| **Onboarding 3 (`Lemari Digital Pintar`)** | `03` | PARTIAL (perlu scroll fallback di layar 640dp) | PASS (5 kartu float `graphicsLayer`) | PASS (pill `ID` interaktif, CTA berfungsi) | N/A | **PASS** |
-| **Beranda (`HomeScreen`)** | `04` | PARTIAL (1.3x font scale pada bento/cuaca, `#181A1B` dark mode) | PARTIAL (belum ada `AnimatedContent` saat Shuffle) | PARTIAL (Snackbar OK; belum ada loading cuaca, anti double-tap Pakai, & haptic) | PARTIAL (offline fallback OK; belum ada banner khusus 0 baju bersih) | **PARTIAL** |
-| **Mix & Match Studio (`StudioScreen`)** | `05` | PARTIAL (Pin 1 perlu `end = 72.dp` di layar 360dp) | PARTIAL (Lock color anim OK; belum ada animasi shuffle canvas) | PARTIAL (Snackbar OK; belum ada anti double-tap Pakai & haptic) | PASS (slot null aman tidak crash) | **PARTIAL** |
-| **Lemari Digital (`WardrobeScreen`)** | `06` | PARTIAL (kontras Dark Mode `ObsidianDark` di `softIceTint`) | PASS (micro-animation `BERSIH`/`LAUNDRY` + scale spring) | PARTIAL (Snackbar OK; belum ada haptic; jumlah item bentrok jika ada draft) | PASS (empty state search/filter informatif) | **PARTIAL** |
-| **Tambah Pakaian (`AddItemScreen`)** | `08` | PARTIAL (kontras Dark Mode & row 3 tombol di 360dp + 1.3x) | PARTIAL (belum slide-up modal di `NavHost`) | PARTIAL (loading ML Kit OK; tombol `Ulang` belum buka kamera; belum haptic) | PARTIAL (Draft tersimpan tapi belum bisa dibuka ulang) | **PARTIAL** |
-| **Laundry Tracker (`LaundryScreen`)** | `07` | PARTIAL (kontras Dark Mode `softIceTint` pada chip/badge) | PARTIAL (`AnimatedVisibility` Selesai Cuci sangat baik; daftar bersih belum `animateItem()`) | PARTIAL (Snackbar OK; `Cuci Semua` belum lock saat animasi; belum haptic) | PASS (empty state keranjang kosong & filter informatif) | **PARTIAL** |
-| **Tentang (`AboutScreen`)** | - | PASS (card editorial & tombol Privasi) | PASS (back stack bersih) | PASS (intent browser berfungsi) | N/A | **PASS** |
+| **Onboarding 2 (`Peringatan Cuaca`)** | `02` | PASS (mockup lockscreen + glow Cobalt + `verticalScroll`) | PASS (`HorizontalPager` + animated dot) | PASS (Lewati & Lanjut berfungsi) | N/A | **PASS** |
+| **Onboarding 3 (`Lemari Digital Pintar`)** | `03` | PASS (5 kartu float + `verticalScroll` aman layar 640dp) | PASS (5 kartu float `graphicsLayer`) | PASS (pill `ID` interaktif, CTA berfungsi) | N/A | **PASS** |
+| **Beranda (`HomeScreen`)** | `04` | PASS (`heightIn(min = 114.dp)` & `darkCardSurface` aman Dark Mode / 1.3x) | PASS (`AnimatedContent` saat Shuffle + crossfade tab) | PASS (Spinner cuaca, guard `isWearingOutfit`, Snackbar, `HapticFeedback`, izin notifikasi) | PASS (offline fallback + `AllClothesDirtyBanner` saat 0 baju bersih) | **PASS** |
+| **Mix & Match Studio (`StudioScreen`)** | `05` | PASS (Pin 1 `end = 72.dp` aman 360dp, tidak sentuh dock) | PASS (Lock color anim + `AnimatedContent` flat-lay canvas) | PASS (guard `isWearingOutfit`, Snackbar, `HapticFeedback`, spinner cuaca) | PASS (slot null aman tidak crash) | **PASS** |
+| **Lemari Digital (`WardrobeScreen`)** | `06` | PASS (kontras Dark Mode `onSoftIceTint` memenuhi WCAG AA) | PASS (micro-animation `BERSIH`/`LAUNDRY` + scale spring) | PASS (Snackbar, `HapticFeedback`, auto-filter highlight, banner & dialog Draft) | PASS (empty state search/filter + `DraftsManagerDialog`) | **PASS** |
+| **Tambah Pakaian (`AddItemScreen`)** | `08` | PASS (4-state HUD + kontras Dark Mode + tombol adaptif 360dp/1.3x) | PASS (slide-up/down `NavHost` + cascading reveal) | PASS (loading ML Kit, kamera `FileProvider` + 3-state permission, `HapticFeedback`) | PASS (Draft tersimpan terpisah & bisa dipublikasikan ulang) | **PASS** |
+| **Laundry Tracker (`LaundryScreen`)** | `07` | PASS (kontras Dark Mode `onSoftIceTint` pada chip/badge) | PASS (`AnimatedVisibility` Selesai Cuci + `Modifier.animateItem()`) | PASS (Snackbar, lock `Cuci Semua` saat animasi, `HapticFeedback`, bobot bahan) | PASS (empty state keranjang kosong & filter informatif) | **PASS** |
+| **Tentang (`AboutScreen`)** | - | PASS (card editorial & tombol Privasi) | PASS (slide horizontal `NavHost` + back stack bersih) | PASS (intent browser berfungsi) | N/A | **PASS** |
 
 ---
 
-## 4. Hasil Output Gradle Test & Lint
+## 4. Hasil Output Gradle Test & Lint (Verifikasi Akhir)
 
-Seluruh verifikasi dijalankan pada 27 November 2026 melalui perintah:
+Seluruh verifikasi pasca-remediasi dijalankan pada 27 November 2026 melalui perintah:
 
 ```powershell
-.\gradlew.bat testDebugUnitTest lintDebug assembleDebug --console=plain
+.\gradlew.bat testDebugUnitTest lintDebug assembleDebug --no-configuration-cache --console=plain
 ```
 
 ### A. Ringkasan Status Build
-- **Hasil Akhir:** `BUILD SUCCESSFUL in 2m 46s` (56 task, 19 dieksekusi, 37 up-to-date)
-- **`assembleDebug`:** **PASS** (0 error kompilasi, 0 warning Kotlin)
-- **`testDebugUnitTest`:** **PASS** (**16 / 16 test lulus**, 0 gagal, 0 error, 0 dilewati)
-- **`lintDebug`:** **PASS** (**0 Error**, **40 Warning/Advisory**)
+- **Hasil Akhir:** `BUILD SUCCESSFUL in 2m 39s` (56 task dieksekusi, 0 gagal)
+- **`assembleDebug`:** **PASS** (`app/build/outputs/apk/debug/app-debug.apk` terbentuk, 0 error kompilasi, 0 warning Kotlin)
+- **`testDebugUnitTest`:** **PASS** (**18 / 18 test lulus**, 0 gagal, 0 error, 0 dilewati)
+- **`lintDebug`:** **PASS** (**0 Error**, **0 Warning Kode Sumber/Resource/Manifest**, 13 Advisory versi dependensi di `gradle/libs.versions.toml`, turun dari 40 warning)
 
 ### B. Rincian Unit Test (`app/build/test-results/testDebugUnitTest/`)
 
-1. **`OutfitRecommendationEngineTest` (8/8 PASS, 0.099s):**
+1. **`OutfitRecommendationEngineTest` (9/9 PASS, 0.071s):**
    - `rainy weather recommends umbrella and includes outer layer`: PASS
    - `hot clear weather skips outer layer and does not recommend umbrella`: PASS
    - `cold dry weather includes outer layer without umbrella`: PASS
@@ -229,39 +230,56 @@ Seluruh verifikasi dijalankan pada 27 November 2026 melalui perintah:
    - `locked items are always preserved even on hot weather across shuffles`: PASS
    - `style filter prioritizes matching style items`: PASS
    - `missing categories return null safely without crashing`: PASS
-2. **`WardrobeAndLaundryLogicTest` (5/5 PASS, 0.045s):**
+   - `draft items are never recommended and suitableWeathers boosts rain matches`: PASS
+2. **`WardrobeAndLaundryLogicTest` (6/6 PASS, 0.033s):**
    - `wearing items increments wearCount and marks dirty once maxWearBeforeWash is reached`: PASS
    - `washing single item resets only that item while keeping others dirty`: PASS
    - `wash all cleans entire laundry queue and resets wear counts`: PASS
    - `toggleLaundryStatus switches clean to dirty at maxWear and back to clean`: PASS
    - `category and search filter match by name, colorName, material, and style`: PASS
-3. **`StarterWardrobeSeederTest` (2/2 PASS, 0.098s):**
+   - `drafts stay separated until published and wearCount caps at maxWearBeforeWash`: PASS
+3. **`StarterWardrobeSeederTest` (2/2 PASS, 0.055s):**
    - `seeds 12 starter items with complete metadata and 2 laundry items`: PASS
    - `does not duplicate items when database is already populated`: PASS
-4. **`ExampleUnitTest` (1/1 PASS, 0.012s):**
+4. **`ExampleUnitTest` (1/1 PASS, 0.013s):**
    - `addition_isCorrect`: PASS
 
 ### C. Ringkasan Temuan Android Lint (`app/build/reports/lint-results-debug.sarif`)
 
-| Kategori Rule Lint | Jumlah | Lokasi Utama |
-| :--- | :---: | :--- |
-| `UseTomlInstead` | 14 | `app/build.gradle.kts:61-85` |
-| `GradleDependency` | 8 | `app/build.gradle.kts` & `gradle/libs.versions.toml` |
-| `UnusedResources` | 7 | `app/src/main/res/values/colors.xml:3-9` |
-| `NewerVersionAvailable` | 4 | `app/build.gradle.kts` & `gradle/libs.versions.toml` |
-| `UseKtx` | 3 | `FitCastNavGraph.kt:44`, `GarmentArtwork.kt:32`, `ImageProcessor.kt:161` |
-| `LocalContextResourcesRead` | 1 | `GarmentArtwork.kt:49` |
-| `DiscouragedApi` | 1 | `GarmentArtwork.kt:49` (`Resources.getIdentifier`) |
-| `ObsoleteSdkInt` | 1 | `MorningBriefingWorker.kt:54` |
-| `RedundantLabel` | 1 | `AndroidManifest.xml:26` |
-| **Total Error / Fatal** | **0** | - |
-| **Total Warning / Advisory** | **40** | Laporan lengkap: `app/build/reports/lint-results-debug.html` |
+| Kategori Rule Lint | Sebelum | Sesudah | Keterangan |
+| :--- | :---: | :---: | :--- |
+| `UseTomlInstead` | 14 | **0** | Seluruh dependensi dipindahkan ke `gradle/libs.versions.toml` |
+| `UnusedResources` | 7 | **0** | 7 warna template tak terpakai di `res/values/colors.xml` dihapus |
+| `UseKtx` | 3 | **0** | Menggunakan `toColorInt()`, `prefs.edit {}`, `bitmap.scale()` |
+| `LocalContextResourcesRead` | 1 | **0** | Diganti registry statis di `GarmentArtwork.kt` |
+| `DiscouragedApi` | 1 | **0** | `Resources.getIdentifier` dihapus total |
+| `ObsoleteSdkInt` | 1 | **0** | Pengecekan usang di `MorningBriefingWorker.kt` & `HomeScreen.kt` dihapus |
+| `RedundantLabel` | 1 | **0** | Label redundan di `AndroidManifest.xml` dihapus |
+| `GradleDependency` | 8 | 9 | Advisory opsional pembaruan versi library di `libs.versions.toml` (+`exifinterface`) |
+| `NewerVersionAvailable` | 4 | 4 | Advisory opsional pembaruan versi major Kotlin/Retrofit/OkHttp |
+| **Total Error / Fatal** | **0** | **0** | - |
+| **Total Warning Kode Sumber** | **14** | **0** | Seluruh warning di `.kt`, `.xml`, dan `app/build.gradle.kts` bersih |
+| **Total Warning / Advisory** | **40** | **13** | Hanya advisory pembaruan versi di `gradle/libs.versions.toml` |
 
 ---
 
-## 5. Urutan Eksekusi Perbaikan yang Direkomendasikan (Tahap Remediation)
+## 5. Status Pelaksanaan Remediasi (16 / 16 RESOLVED)
 
-Jika disetujui untuk masuk ke tahap perbaikan kode, prioritas eksekusi yang paling efisien:
-1. **Batch 1 (Anti-Crash & Data Integrity):** Fix `[C-01]` 2-pass bitmap sampling + EXIF, `[H-01]` hapus file gambar lokal saat delete, `[H-02]` timeout/cancel listener/permission guard di Weather & ML Kit, `[H-03]` permintaan `POST_NOTIFICATIONS` + 3-state Location Settings, dan `[M-01]` pemisahan query `isDraft = 0` + akses ulang Draft.
-2. **Batch 2 (Dark Mode, Responsiveness 360dp/1.3x & UX Feedback):** Fix `[H-07]` token `onSoftIceTint` Dark Mode, `[M-03]` clipping 360dp/1.3x + Pin 1 margin, `[H-04]` anti double-tap + spinner cuaca, `[H-05]` `HapticFeedback`, dan `[M-04]` banner 0 baju bersih.
-3. **Batch 3 (Transisi, Algoritma & Lint Polish):** Fix `[H-06]` transisi `NavHost`, `[M-02]` `AnimatedContent` shuffle + `animateItem()`, `[M-05]` skor `suitableWeathers` + bobot bahan di Laundry, `[M-06]` kamera `FileProvider` pada tombol Ulang, serta `[P-01]` pembersihan seluruh Lint warning kode sumber.
+| ID | Severity | Status | File Utama yang Diperbaiki |
+| :--- | :---: | :---: | :--- |
+| `[C-01]` | CRITICAL | **RESOLVED** | `ImageProcessor.kt`, `gradle/libs.versions.toml`, `app/build.gradle.kts` |
+| `[H-01]` | HIGH | **RESOLVED** | `WardrobeRepository.kt` |
+| `[H-02]` | HIGH | **RESOLVED** | `WeatherRepository.kt`, `WeatherApiService.kt`, `ImageProcessor.kt`, `AppContainer.kt` |
+| `[H-03]` | HIGH | **RESOLVED** | `FitCastNavGraph.kt`, `HomeScreen.kt`, `WardrobeScreens.kt`, `MorningBriefingWorker.kt` |
+| `[H-04]` | HIGH | **RESOLVED** | `FitCastChrome.kt`, `HomeViewModel.kt`, `HomeScreen.kt`, `StudioScreen.kt`, `LaundryScreen.kt` |
+| `[H-05]` | HIGH | **RESOLVED** | `HomeScreen.kt`, `StudioScreen.kt`, `WardrobeScreens.kt`, `AddItemScreen.kt`, `LaundryScreen.kt` |
+| `[H-06]` | HIGH | **RESOLVED** | `FitCastNavGraph.kt` |
+| `[H-07]` | HIGH | **RESOLVED** | `Theme.kt`, `WardrobeScreens.kt`, `AddItemScreen.kt`, `LaundryScreen.kt` |
+| `[M-01]` | MEDIUM | **RESOLVED** | `FitCastDaos.kt`, `WardrobeRepository.kt`, `OutfitRecommendationEngine.kt`, `WardrobeViewModel.kt`, `WardrobeScreens.kt` |
+| `[M-02]` | MEDIUM | **RESOLVED** | `HomeScreen.kt`, `StudioScreen.kt`, `LaundryScreen.kt` |
+| `[M-03]` | MEDIUM | **RESOLVED** | `HomeScreen.kt`, `StudioScreen.kt`, `AddItemScreen.kt`, `OnboardingAndAboutScreens.kt` |
+| `[M-04]` | MEDIUM | **RESOLVED** | `HomeScreen.kt` |
+| `[M-05]` | MEDIUM | **RESOLVED** | `OutfitRecommendationEngine.kt`, `WardrobeRepository.kt`, `LaundryScreen.kt` |
+| `[M-06]` | MEDIUM | **RESOLVED** | `AddItemScreen.kt`, `AndroidManifest.xml`, `res/xml/file_paths.xml` |
+| `[P-01]` | POLISH | **RESOLVED** | `GarmentArtwork.kt`, `MorningBriefingWorker.kt`, `AndroidManifest.xml`, `res/values/colors.xml`, `gradle/libs.versions.toml`, `app/build.gradle.kts` |
+| `[P-02]` | POLISH | **RESOLVED** | `HomeScreen.kt` |

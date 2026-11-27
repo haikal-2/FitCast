@@ -1,6 +1,10 @@
 package com.fitcast.cuacagaya.domain.engine
 
-import com.fitcast.cuacagaya.data.local.entity.*
+import com.fitcast.cuacagaya.data.local.entity.ColorTone
+import com.fitcast.cuacagaya.data.local.entity.WardrobeCategory
+import com.fitcast.cuacagaya.data.local.entity.WardrobeItemEntity
+import com.fitcast.cuacagaya.data.local.entity.WarmthLevel
+import com.fitcast.cuacagaya.data.local.entity.WeatherCacheEntity
 
 data class RecommendedOutfit(
     val top: WardrobeItemEntity?,
@@ -20,8 +24,9 @@ class OutfitRecommendationEngine {
         lockedItems: Map<String, WardrobeItemEntity> = emptyMap(),
         preferredStyle: String? = null
     ): RecommendedOutfit {
-        val cleanItems = allItems.filter { it.isClean }
-        val pool = if (cleanItems.isNotEmpty()) cleanItems else allItems
+        val activeItems = allItems.filter { !it.isDraft }
+        val cleanItems = activeItems.filter { it.isClean }
+        val pool = if (cleanItems.isNotEmpty()) cleanItems else activeItems
 
         val isRainy = weather.rainProbability >= 50 ||
             weather.weatherMain.contains("Rain", true) ||
@@ -29,6 +34,7 @@ class OutfitRecommendationEngine {
             weather.weatherMain.contains("Thunderstorm", true)
         val isHot = weather.temperature >= 30.0
         val isCold = weather.temperature <= 22.0
+        val isWindy = weather.windSpeed >= 4.0
 
         val targetWarmth = when {
             isHot -> WarmthLevel.LIGHT
@@ -46,12 +52,16 @@ class OutfitRecommendationEngine {
                 if (item.warmthLevel == targetWarmth) score += 30
                 else if (item.warmthLevel == WarmthLevel.MEDIUM) score += 15
 
-                if (preferredStyle != null && item.style == preferredStyle) score += 20
+                if (preferredStyle != null && item.style == preferredStyle) score += 25
+
+                if (matchesSuitableWeather(item.suitableWeathers, isRainy, isHot, isCold, isWindy)) {
+                    score += 15
+                }
 
                 if (anchorColorTone != null) {
                     score += colorHarmonyScore(anchorColorTone, item.colorTone)
                 }
-                score += (0..18).random()
+                score += (0..12).random()
                 item to score
             }
             return scored.maxByOrNull { it.second }?.first
@@ -88,6 +98,24 @@ class OutfitRecommendationEngine {
             bringUmbrella = isRainy,
             harmonyLabel = harmony
         )
+    }
+
+    private fun matchesSuitableWeather(
+        suitableWeathers: String,
+        isRainy: Boolean,
+        isHot: Boolean,
+        isCold: Boolean,
+        isWindy: Boolean
+    ): Boolean {
+        if (suitableWeathers.isBlank()) return false
+        return when {
+            isRainy && suitableWeathers.contains("Hujan", ignoreCase = true) -> true
+            isHot && suitableWeathers.contains("Panas", ignoreCase = true) -> true
+            isCold && (suitableWeathers.contains("Dingin", ignoreCase = true) || suitableWeathers.contains("Berangin", ignoreCase = true)) -> true
+            isWindy && suitableWeathers.contains("Berangin", ignoreCase = true) -> true
+            !isRainy && !isHot && suitableWeathers.contains("Berawan", ignoreCase = true) -> true
+            else -> false
+        }
     }
 
     private fun colorHarmonyScore(toneA: String, toneB: String): Int {

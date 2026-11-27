@@ -42,6 +42,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.AutoFixHigh
+import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Checkroom
 import androidx.compose.material.icons.outlined.DeleteOutline
@@ -136,11 +137,13 @@ fun WardrobeScreen(
     viewModel: WardrobeViewModel,
     onAddClick: () -> Unit,
     weather: WeatherCacheEntity? = null,
+    isLoadingWeather: Boolean = false,
     onAboutClick: () -> Unit = {},
     onRefreshGps: () -> Unit = {},
     onSelectCity: (String) -> Unit = {}
 ) {
     val items by viewModel.allItems.collectAsStateWithLifecycle()
+    val draftItems by viewModel.draftItems.collectAsStateWithLifecycle()
     val recentlyAdded by viewModel.recentlyAdded.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -148,20 +151,31 @@ fun WardrobeScreen(
 
     var showCityDialog by remember { mutableStateOf(false) }
     var showNotificationDialog by remember { mutableStateOf(false) }
+    var showDraftsDialog by remember { mutableStateOf(false) }
+    var locationDenied by remember { mutableStateOf(false) }
     var editingItem by remember { mutableStateOf<WardrobeItemEntity?>(null) }
 
     val locationLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { perms ->
-        if (perms.values.any { it }) onRefreshGps() else showCityDialog = true
+        if (perms.values.any { it }) {
+            locationDenied = false
+            onRefreshGps()
+        } else {
+            locationDenied = true
+            showCityDialog = true
+        }
     }
 
     WardrobeScreenContent(
         items = items,
+        draftCount = draftItems.size,
         recentlyAdded = recentlyAdded,
         weather = weather,
+        isLoadingWeather = isLoadingWeather,
         snackbarHostState = snackbarHostState,
         onAddClick = onAddClick,
+        onOpenDrafts = { showDraftsDialog = true },
         onDismissRecentlyAdded = viewModel::clearRecentlyAdded,
         onLocationClick = { showCityDialog = true },
         onNotificationClick = { showNotificationDialog = true },
@@ -190,6 +204,7 @@ fun WardrobeScreen(
     if (showCityDialog) {
         CityPickerDialog(
             currentCity = weather?.cityName ?: "Bandung",
+            showSettingsShortcut = locationDenied,
             onUseGps = {
                 showCityDialog = false
                 locationLauncher.launch(
@@ -215,6 +230,22 @@ fun WardrobeScreen(
         )
     }
 
+    if (showDraftsDialog) {
+        DraftsManagerDialog(
+            drafts = draftItems,
+            onPublish = { draft ->
+                viewModel.publishDraft(draft)
+                scope.launch { snackbarHostState.showSnackbar("${draft.name} dipublikasikan ke Lemari") }
+                if (draftItems.size <= 1) showDraftsDialog = false
+            },
+            onDelete = { draft ->
+                viewModel.deleteItem(draft)
+                if (draftItems.size <= 1) showDraftsDialog = false
+            },
+            onDismiss = { showDraftsDialog = false }
+        )
+    }
+
     editingItem?.let { item ->
         EditWardrobeItemDialog(
             item = item,
@@ -231,10 +262,13 @@ fun WardrobeScreen(
 @Composable
 private fun WardrobeScreenContent(
     items: List<WardrobeItemEntity>,
+    draftCount: Int,
     recentlyAdded: RecentlyAddedHighlight?,
     weather: WeatherCacheEntity?,
+    isLoadingWeather: Boolean,
     snackbarHostState: SnackbarHostState,
     onAddClick: () -> Unit,
+    onOpenDrafts: () -> Unit,
     onDismissRecentlyAdded: () -> Unit,
     onLocationClick: () -> Unit,
     onNotificationClick: () -> Unit,
@@ -321,6 +355,7 @@ private fun WardrobeScreenContent(
                 onLocationClick = onLocationClick,
                 onNotificationClick = onNotificationClick,
                 onProfileClick = onProfileClick,
+                isLoadingWeather = isLoadingWeather,
                 hasUnreadNotification = items.any { !it.isClean },
                 notificationBadgeColor = LaundryRed,
                 weatherIconTint = PureWhite.copy(alpha = 0.85f)
@@ -743,6 +778,55 @@ private fun WardrobeScreenContent(
                     }
                 }
 
+                // Saved Drafts quick-access bar when drafts exist
+                if (draftCount > 0) {
+                    item(span = { GridItemSpan(maxLineSpan) }, key = "drafts_bar", contentType = "draftsBar") {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = fitColors.softIceTint,
+                            border = BorderStroke(1.dp, fitColors.subtleBorder),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(16.dp))
+                                .clickable(role = Role.Button, onClick = onOpenDrafts)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.BookmarkBorder,
+                                        contentDescription = null,
+                                        tint = ElectricCobalt,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Text(
+                                        text = "$draftCount Draft Pakaian Tersimpan",
+                                        fontFamily = PlusJakartaSans,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp,
+                                        color = fitColors.onSoftIceTint
+                                    )
+                                }
+                                Text(
+                                    text = "Kelola",
+                                    fontFamily = PlusJakartaSans,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp,
+                                    color = ElectricCobalt
+                                )
+                            }
+                        }
+                    }
+                }
+
                 // Empty state or 2-column garment grid
                 if (filtered.isEmpty()) {
                     item(span = { GridItemSpan(maxLineSpan) }, key = "empty_wardrobe", contentType = "empty") {
@@ -1154,6 +1238,82 @@ private fun EditWardrobeItemDialog(
     )
 }
 
+@Composable
+private fun DraftsManagerDialog(
+    drafts: List<WardrobeItemEntity>,
+    onPublish: (WardrobeItemEntity) -> Unit,
+    onDelete: (WardrobeItemEntity) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "Draft Pakaian (${drafts.size})",
+                fontFamily = PlusJakartaSans,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            if (drafts.isEmpty()) {
+                Text("Tidak ada draft tersimpan.")
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    drafts.forEach { draft ->
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = FitCastTheme.colors.softIceTint,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = draft.name,
+                                        fontFamily = PlusJakartaSans,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp,
+                                        color = FitCastTheme.colors.onSoftIceTint,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = "${draft.category} • ${draft.colorName.ifBlank { "Netral" }}",
+                                        fontFamily = PlusJakartaSans,
+                                        fontSize = 11.sp,
+                                        color = FitCastTheme.colors.mutedText
+                                    )
+                                }
+                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    TextButton(onClick = { onPublish(draft) }) {
+                                        Text("Simpan", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                    }
+                                    IconButton(onClick = { onDelete(draft) }, modifier = Modifier.size(32.dp)) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.DeleteOutline,
+                                            contentDescription = "Hapus draft",
+                                            tint = LaundryRed,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Tutup") }
+        }
+    )
+}
+
 @Preview(showBackground = true, widthDp = 390, heightDp = 860)
 @Composable
 private fun WardrobeScreenAutoFilterPreview() {
@@ -1187,10 +1347,13 @@ private fun WardrobeScreenAutoFilterPreview() {
     FitCastTheme(darkTheme = false) {
         WardrobeScreenContent(
             items = listOf(newlyAdded, existingOuter),
+            draftCount = 1,
             recentlyAdded = RecentlyAddedHighlight(99, newlyAdded.name, WardrobeCategory.OUTER),
             weather = null,
+            isLoadingWeather = false,
             snackbarHostState = remember { SnackbarHostState() },
             onAddClick = {},
+            onOpenDrafts = {},
             onDismissRecentlyAdded = {},
             onLocationClick = {},
             onNotificationClick = {},

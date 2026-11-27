@@ -32,6 +32,8 @@ data class HomeUiState(
     val totalCombinations: Int = 4,
     val isFavoriteOutfit: Boolean = false,
     val isLoadingWeather: Boolean = false,
+    val isWearingOutfit: Boolean = false,
+    val shuffleNonce: Int = 0,
     val statusMessage: String? = null
 )
 
@@ -167,6 +169,7 @@ class HomeViewModel(
             state.copy(
                 recommendation = newRec,
                 combinationIndex = nextIndex,
+                shuffleNonce = state.shuffleNonce + 1,
                 isFavoriteOutfit = false
             )
         }
@@ -196,20 +199,36 @@ class HomeViewModel(
     }
 
     fun wearCurrentOutfit() = viewModelScope.launch {
+        if (_uiState.value.isWearingOutfit) return@launch
         val rec = _uiState.value.recommendation ?: return@launch
-        val worn = listOfNotNull(rec.top, rec.bottom, rec.outer, rec.shoes)
-        wardrobeRepo.wearItems(worn)
-        wardrobeRepo.saveOutfit(
-            SavedOutfitEntity(
-                outfitName = "Outfit ${_uiState.value.weather?.cityName ?: "Hari Ini"}",
-                topId = rec.top?.id,
-                bottomId = rec.bottom?.id,
-                outerId = rec.outer?.id,
-                shoesId = rec.shoes?.id,
-                targetWeather = _uiState.value.weather?.weatherMain ?: "Clouds"
+        _uiState.update { it.copy(isWearingOutfit = true) }
+        try {
+            val worn = listOfNotNull(rec.top, rec.bottom, rec.outer, rec.shoes)
+            wardrobeRepo.wearItems(worn)
+            wardrobeRepo.saveOutfit(
+                SavedOutfitEntity(
+                    outfitName = "Outfit ${_uiState.value.weather?.cityName ?: "Hari Ini"}",
+                    topId = rec.top?.id,
+                    bottomId = rec.bottom?.id,
+                    outerId = rec.outer?.id,
+                    shoesId = rec.shoes?.id,
+                    targetWeather = _uiState.value.weather?.weatherMain ?: "Clouds"
+                )
             )
-        )
-        _uiState.update { it.copy(statusMessage = "Outfit dicatat dipakai hari ini!") }
+            _uiState.update {
+                it.copy(
+                    isWearingOutfit = false,
+                    statusMessage = "Outfit dicatat dipakai hari ini!"
+                )
+            }
+        } catch (_: Exception) {
+            _uiState.update {
+                it.copy(
+                    isWearingOutfit = false,
+                    statusMessage = "Gagal mencatat pemakaian outfit"
+                )
+            }
+        }
     }
 
     fun clearMessage() = _uiState.update { it.copy(statusMessage = null) }

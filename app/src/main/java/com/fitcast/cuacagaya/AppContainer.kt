@@ -11,17 +11,21 @@ import com.fitcast.cuacagaya.domain.processor.ImageProcessor
 import com.fitcast.cuacagaya.worker.MorningBriefingWorker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 class FitCastApplication : Application() {
     lateinit var container: AppContainer
+    private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
 
-        CoroutineScope(Dispatchers.IO).launch {
-            StarterWardrobeSeeder.seedIfEmpty(container.database.wardrobeDao())
+        applicationScope.launch {
+            runCatching {
+                StarterWardrobeSeeder.seedIfEmpty(container.database.wardrobeDao())
+            }
         }
         MorningBriefingWorker.scheduleDailyMorning(this)
     }

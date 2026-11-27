@@ -16,6 +16,9 @@ interface WardrobeDao {
     @Query("SELECT * FROM wardrobe_items WHERE isDraft = 0 ORDER BY id DESC")
     fun getAllItems(): Flow<List<WardrobeItemEntity>>
 
+    @Query("SELECT * FROM wardrobe_items WHERE isDraft = 1 ORDER BY id DESC")
+    fun getDraftItems(): Flow<List<WardrobeItemEntity>>
+
     @Query("SELECT * FROM wardrobe_items WHERE isDraft = 0")
     suspend fun getAllItemsOnce(): List<WardrobeItemEntity>
 
@@ -36,6 +39,9 @@ interface WardrobeDao {
 
     @Delete
     suspend fun deleteItem(item: WardrobeItemEntity)
+
+    @Query("UPDATE wardrobe_items SET isDraft = 0 WHERE id = :itemId")
+    suspend fun publishDraft(itemId: Long)
 
     @Query("UPDATE wardrobe_items SET isClean = 1, wearCount = 0 WHERE id = :itemId")
     suspend fun markItemWashed(itemId: Long)

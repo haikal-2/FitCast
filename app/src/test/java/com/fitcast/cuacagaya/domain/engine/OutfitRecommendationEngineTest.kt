@@ -292,4 +292,30 @@ class OutfitRecommendationEngineTest {
         assertNull(result.shoes)
         assertEquals("Lengkapi Lemari", result.harmonyLabel)
     }
+
+    @Test
+    fun `draft items are never recommended and suitableWeathers boosts rain matches`() {
+        val rainyWeather = WeatherCacheEntity(
+            cityName = "Bandung",
+            temperature = 24.0,
+            feelsLike = 24.0,
+            humidity = 85,
+            windSpeed = 3.5,
+            weatherMain = "Rain",
+            weatherDescription = "Hujan ringan",
+            rainProbability = 75
+        )
+        val itemsWithDraftAndWeather = listOf(
+            WardrobeItemEntity(20, "Draft Top", WardrobeCategory.TOP, WarmthLevel.HEAVY, OutfitStyle.CASUAL, "#FFFFFF", ColorTone.NEUTRAL, isDraft = true),
+            WardrobeItemEntity(21, "Kaos Biasa", WardrobeCategory.TOP, WarmthLevel.MEDIUM, OutfitStyle.CASUAL, "#FFFFFF", ColorTone.NEUTRAL, suitableWeathers = "Panas"),
+            WardrobeItemEntity(22, "Outer Biasa", WardrobeCategory.OUTER, WarmthLevel.HEAVY, OutfitStyle.CASUAL, "#475569", ColorTone.NEUTRAL, suitableWeathers = "Berawan"),
+            WardrobeItemEntity(23, "Jaket Anti Hujan", WardrobeCategory.OUTER, WarmthLevel.HEAVY, OutfitStyle.CASUAL, "#475569", ColorTone.NEUTRAL, suitableWeathers = "Hujan Ringan,Hujan Deras")
+        )
+
+        repeat(20) {
+            val result = engine.recommend(rainyWeather, itemsWithDraftAndWeather)
+            assertNotEquals("Draft item must never be selected", 20L, result.top?.id)
+            assertEquals("Rain-suitable outer should win on rainy weather", 23L, result.outer?.id)
+        }
+    }
 }

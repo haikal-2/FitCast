@@ -49,6 +49,9 @@ class WardrobeViewModel(
     val allItems: StateFlow<List<WardrobeItemEntity>> = repository.allItems
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val draftItems: StateFlow<List<WardrobeItemEntity>> = repository.draftItems
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val dirtyItems: StateFlow<List<WardrobeItemEntity>> = repository.dirtyItems
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -245,6 +248,15 @@ class WardrobeViewModel(
 
     fun updateItem(item: WardrobeItemEntity) = viewModelScope.launch {
         repository.updateItem(item)
+    }
+
+    fun publishDraft(item: WardrobeItemEntity) = viewModelScope.launch {
+        repository.publishDraft(item.id)
+        _recentlyAdded.value = RecentlyAddedHighlight(
+            itemId = item.id,
+            itemName = item.name,
+            category = item.category
+        )
     }
 
     fun toggleLaundryStatus(item: WardrobeItemEntity) = viewModelScope.launch {

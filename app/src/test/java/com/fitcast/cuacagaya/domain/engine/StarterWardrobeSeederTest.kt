@@ -17,6 +17,7 @@ class StarterWardrobeSeederTest {
         val inserted = mutableListOf<WardrobeItemEntity>()
 
         override fun getAllItems(): Flow<List<WardrobeItemEntity>> = MutableStateFlow(inserted)
+        override fun getDraftItems(): Flow<List<WardrobeItemEntity>> = MutableStateFlow(inserted.filter { it.isDraft })
         override suspend fun getAllItemsOnce(): List<WardrobeItemEntity> = inserted.toList()
         override fun getDirtyItems(): Flow<List<WardrobeItemEntity>> =
             MutableStateFlow(inserted.filter { !it.isClean })
@@ -30,6 +31,7 @@ class StarterWardrobeSeederTest {
         }
         override suspend fun updateItem(item: WardrobeItemEntity) = Unit
         override suspend fun deleteItem(item: WardrobeItemEntity) = Unit
+        override suspend fun publishDraft(itemId: Long) = Unit
         override suspend fun markItemWashed(itemId: Long) = Unit
         override suspend fun markAllWashed() = Unit
         override suspend fun saveOutfit(outfit: SavedOutfitEntity) = Unit

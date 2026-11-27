@@ -1,8 +1,19 @@
 package com.fitcast.cuacagaya.ui.home
 
 import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -17,6 +28,7 @@ import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -35,6 +47,8 @@ import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.LocalLaundryService
 import androidx.compose.material.icons.outlined.MyLocation
+import androidx.compose.material.icons.outlined.NotificationsActive
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.WaterDrop
 import androidx.compose.material.icons.outlined.WbSunny
@@ -42,9 +56,11 @@ import androidx.compose.material.icons.rounded.Sync
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -62,6 +78,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -71,6 +90,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.fitcast.cuacagaya.data.local.entity.ColorTone
 import com.fitcast.cuacagaya.data.local.entity.OutfitStyle
@@ -101,15 +121,19 @@ fun HomeScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+    val haptic = LocalHapticFeedback.current
     var showCityDialog by remember { mutableStateOf(false) }
     var showNotificationDialog by remember { mutableStateOf(false) }
+    var locationPermissionDenied by remember { mutableStateOf(false) }
 
     val locationLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { perms ->
         if (perms.values.any { it }) {
+            locationPermissionDenied = false
             viewModel.refreshWeatherByGps()
         } else {
+            locationPermissionDenied = true
             showCityDialog = true
         }
     }
@@ -127,20 +151,30 @@ fun HomeScreen(
         onLocationClick = { showCityDialog = true },
         onNotificationClick = { showNotificationDialog = true },
         onProfileClick = onAboutClick,
-        onStyleSelected = viewModel::setStyleFilter,
+        onStyleSelected = { style ->
+            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            viewModel.setStyleFilter(style)
+        },
         onNavigateToWardrobe = onNavigateToWardrobe,
         onNavigateToLaundry = onNavigateToLaundry,
         onNavigateToStudio = { slot ->
             if (slot != null) viewModel.selectStudioSlot(slot)
             onNavigateToStudio()
         },
-        onShuffleClick = viewModel::shuffleOutfit,
-        onWearOutfitClick = viewModel::wearCurrentOutfit
+        onShuffleClick = {
+            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            viewModel.shuffleOutfit()
+        },
+        onWearOutfitClick = {
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            viewModel.wearCurrentOutfit()
+        }
     )
 
     if (showCityDialog) {
         CityPickerDialog(
             currentCity = state.weather?.cityName ?: "Bandung",
+            showSettingsShortcut = locationPermissionDenied,
             onUseGps = {
                 showCityDialog = false
                 locationLauncher.launch(
@@ -200,6 +234,7 @@ private fun HomeScreenContent(
                 onLocationClick = onLocationClick,
                 onNotificationClick = onNotificationClick,
                 onProfileClick = onProfileClick,
+                isLoadingWeather = state.isLoadingWeather,
                 hasUnreadNotification = state.laundryCount > 0 || (rec?.bringUmbrella == true),
                 notificationBadgeColor = ElectricCobalt
             )
@@ -282,11 +317,21 @@ private fun HomeScreenContent(
                 )
             }
 
+            // Edge state alert when every garment in the wardrobe is in laundry
+            if (state.totalCount > 0 && state.readyCount == 0) {
+                AllClothesDirtyBanner(
+                    laundryCount = state.laundryCount,
+                    onOpenLaundry = onNavigateToLaundry,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+            }
+
             // Main Hero Card: Rekomendasi Hari Ini
             DailyRecommendationCard(
                 weather = weather,
                 recommendation = rec,
                 selectedStyle = state.selectedStyle,
+                shuffleNonce = state.shuffleNonce,
                 onShuffleClick = onShuffleClick,
                 onEditMixClick = { onNavigateToStudio(null) },
                 onSlotClick = { slot -> onNavigateToStudio(slot) },
@@ -300,9 +345,10 @@ private fun HomeScreenContent(
                 modifier = Modifier.padding(horizontal = 16.dp)
             )
 
-            // Primary Full-Width Volt Lime CTA
+            // Primary Full-Width Volt Lime CTA with anti double-tap guard
             Button(
                 onClick = onWearOutfitClick,
+                enabled = !state.isWearingOutfit && rec != null,
                 shape = CircleShape,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = fitColors.voltLime,
@@ -312,19 +358,95 @@ private fun HomeScreenContent(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp)
-                    .height(54.dp)
+                    .heightIn(min = 54.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Outlined.CheckCircle,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
+                if (state.isWearingOutfit) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = fitColors.onVoltLime
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Mencatat Outfit...",
+                        fontFamily = PlusJakartaSans,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Outlined.CheckCircle,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Pakai Outfit Ini Hari Ini",
+                        fontFamily = PlusJakartaSans,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AllClothesDirtyBanner(
+    laundryCount: Int,
+    onOpenLaundry: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val fitColors = FitCastTheme.colors
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = fitColors.softDangerTint,
+        border = BorderStroke(1.dp, LaundryRed.copy(alpha = 0.35f)),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.LocalLaundryService,
+                contentDescription = null,
+                tint = LaundryRed,
+                modifier = Modifier.size(22.dp)
+            )
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Pakai Outfit Ini Hari Ini",
+                    text = "Semua pakaian perlu dicuci ($laundryCount item)",
                     fontFamily = PlusJakartaSans,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp
+                    fontSize = 13.sp,
+                    color = LaundryRed
+                )
+                Text(
+                    text = "Rekomendasi sementara menampilkan koleksi terakhir. Selesaikan cucian untuk reset.",
+                    fontFamily = PlusJakartaSans,
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+            Surface(
+                shape = CircleShape,
+                color = LaundryRed,
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .clickable(role = Role.Button, onClick = onOpenLaundry)
+            ) {
+                Text(
+                    text = "Laundry",
+                    fontFamily = PlusJakartaSans,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 11.sp,
+                    color = PureWhite,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                 )
             }
         }
@@ -355,7 +477,7 @@ private fun StyleFilterRow(
                 shape = CircleShape,
                 color = if (isSelected) ObsidianDark else MaterialTheme.colorScheme.surface,
                 contentColor = if (isSelected) PureWhite else MaterialTheme.colorScheme.onSurface,
-                border = if (isSelected) null else BorderStroke(1.dp, FitCastTheme.colors.subtleBorder),
+                border = if (isSelected) BorderStroke(1.dp, VoltLime.copy(alpha = 0.25f)) else BorderStroke(1.dp, FitCastTheme.colors.subtleBorder),
                 modifier = Modifier
                     .defaultMinSize(minHeight = 42.dp)
                     .clip(CircleShape)
@@ -386,11 +508,11 @@ private fun BentoStatsRow(
     onWardrobeClick: () -> Unit,
     onLaundryClick: () -> Unit
 ) {
+    val fitColors = FitCastTheme.colors
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        // Card 1: Total Baju (Electric Cobalt)
         BentoStatCard(
             label = "TOTAL\nBAJU",
             value = totalCount.toString(),
@@ -406,34 +528,32 @@ private fun BentoStatsRow(
             modifier = Modifier.weight(1f)
         )
 
-        // Card 2: Siap Pakai (Obsidian Black)
         BentoStatCard(
             label = "SIAP\nPAKAI",
             value = readyCount.toString(),
-            containerColor = Color(0xFF181A1B),
+            containerColor = fitColors.darkCardSurface,
             labelColor = PureWhite.copy(alpha = 0.84f),
             valueColor = VoltLime,
             unitColor = Color(0xFF9EA8A3),
             icon = Icons.Outlined.CheckCircle,
             iconTint = VoltLime,
             iconBg = VoltLime.copy(alpha = 0.16f),
-            border = null,
+            border = BorderStroke(1.dp, fitColors.subtleBorder.copy(alpha = 0.45f)),
             onClick = onWardrobeClick,
             modifier = Modifier.weight(1f)
         )
 
-        // Card 3: Laundry (Pure White / Surface)
         BentoStatCard(
             label = "LAUNDRY",
             value = laundryCount.toString(),
             containerColor = MaterialTheme.colorScheme.surface,
-            labelColor = FitCastTheme.colors.mutedText,
+            labelColor = fitColors.mutedText,
             valueColor = MaterialTheme.colorScheme.onSurface,
-            unitColor = FitCastTheme.colors.mutedText,
+            unitColor = fitColors.mutedText,
             icon = Icons.Outlined.LocalLaundryService,
             iconTint = LaundryRed,
             iconBg = SoftDangerTint,
-            border = BorderStroke(1.dp, FitCastTheme.colors.subtleBorder),
+            border = BorderStroke(1.dp, fitColors.subtleBorder),
             showAlertDot = laundryCount > 0,
             onClick = onLaundryClick,
             modifier = Modifier.weight(1f)
@@ -463,15 +583,15 @@ private fun BentoStatCard(
         border = border,
         shadowElevation = if (border != null) 2.dp else 4.dp,
         modifier = modifier
-            .height(114.dp)
+            .heightIn(min = 114.dp)
             .clip(RoundedCornerShape(20.dp))
             .clickable(role = Role.Button, onClick = onClick)
     ) {
         Column(
             modifier = Modifier
-                .fillMaxSize()
+                .fillMaxWidth()
                 .padding(12.dp),
-            verticalArrangement = Arrangement.SpaceBetween
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -522,9 +642,10 @@ private fun BentoStatCard(
                     text = value,
                     fontFamily = PlusJakartaSans,
                     fontWeight = FontWeight.ExtraBold,
-                    fontSize = 27.sp,
+                    fontSize = 26.sp,
                     lineHeight = 30.sp,
-                    color = valueColor
+                    color = valueColor,
+                    maxLines = 1
                 )
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
@@ -545,6 +666,7 @@ private fun DailyRecommendationCard(
     weather: WeatherCacheEntity?,
     recommendation: RecommendedOutfit?,
     selectedStyle: String?,
+    shuffleNonce: Int,
     onShuffleClick: () -> Unit,
     onEditMixClick: () -> Unit,
     onSlotClick: (String) -> Unit,
@@ -572,12 +694,8 @@ private fun DailyRecommendationCard(
         else -> "Seimbang & Nyaman"
     }
 
-    val slots = remember(recommendation) {
-        listOf(
-            Triple(WardrobeCategory.OUTER, "Outer", recommendation?.outer ?: recommendation?.shoes),
-            Triple(WardrobeCategory.TOP, "Atasan", recommendation?.top),
-            Triple(WardrobeCategory.BOTTOM, "Bawahan", recommendation?.bottom)
-        )
+    val animatedOutfit = remember(recommendation, shuffleNonce) {
+        shuffleNonce to recommendation
     }
 
     Surface(
@@ -591,7 +709,6 @@ private fun DailyRecommendationCard(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // Top label + dynamic Obsidian/VoltLime pill
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -622,7 +739,6 @@ private fun DailyRecommendationCard(
                 }
             }
 
-            // Title & subtitle
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
                     text = "Rekomendasi Hari Ini",
@@ -695,7 +811,6 @@ private fun DailyRecommendationCard(
                         )
                     }
 
-                    // Circular dark Shuffle button
                     Box(
                         modifier = Modifier
                             .size(40.dp)
@@ -716,7 +831,6 @@ private fun DailyRecommendationCard(
                         )
                     }
 
-                    // White pill "Edit Mix" button
                     Surface(
                         shape = CircleShape,
                         color = MaterialTheme.colorScheme.surface,
@@ -727,9 +841,9 @@ private fun DailyRecommendationCard(
                             .clickable(role = Role.Button, onClick = onEditMixClick)
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 11.dp, vertical = 9.dp),
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Outlined.Tune,
@@ -750,24 +864,37 @@ private fun DailyRecommendationCard(
                 }
             }
 
-            // 3 Side-by-side garment cards
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                slots.forEach { (categoryKey, badgeLabel, item) ->
-                    DailyOutfitItemMiniCard(
-                        badgeLabel = badgeLabel,
-                        item = item,
-                        onClick = { onSlotClick(categoryKey) },
-                        modifier = Modifier.weight(1f)
-                    )
+            // Animated 3 side-by-side garment cards on Shuffle
+            AnimatedContent(
+                targetState = animatedOutfit,
+                transitionSpec = {
+                    (fadeIn(tween(240)) + scaleIn(initialScale = 0.96f, animationSpec = tween(240))) togetherWith
+                        fadeOut(tween(140))
+                },
+                label = "dailyOutfitShuffle"
+            ) { (_, targetRec) ->
+                val slots = listOf(
+                    Triple(WardrobeCategory.OUTER, "Outer", targetRec?.outer ?: targetRec?.shoes),
+                    Triple(WardrobeCategory.TOP, "Atasan", targetRec?.top),
+                    Triple(WardrobeCategory.BOTTOM, "Bawahan", targetRec?.bottom)
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    slots.forEach { (categoryKey, badgeLabel, item) ->
+                        DailyOutfitItemMiniCard(
+                            badgeLabel = badgeLabel,
+                            item = item,
+                            onClick = { onSlotClick(categoryKey) },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
                 }
             }
 
             HorizontalDivider(color = fitColors.subtleBorder)
 
-            // Footer row
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -805,7 +932,7 @@ private fun DailyRecommendationCard(
                         fontFamily = PlusJakartaSans,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = fitColors.onSoftIceTint,
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                     )
                 }
@@ -910,6 +1037,7 @@ private fun WeatherAlertDarkBanner(
     recommendation: RecommendedOutfit?,
     modifier: Modifier = Modifier
 ) {
+    val fitColors = FitCastTheme.colors
     val rainProb = weather?.rainProbability ?: 60
     val isRainy = recommendation?.bringUmbrella == true || rainProb >= 50
     val tempInt = weather?.temperature?.toInt() ?: 24
@@ -962,7 +1090,8 @@ private fun WeatherAlertDarkBanner(
 
     Surface(
         shape = RoundedCornerShape(20.dp),
-        color = Color(0xFF181A1B),
+        color = fitColors.darkCardSurface,
+        border = BorderStroke(1.dp, fitColors.subtleBorder.copy(alpha = 0.4f)),
         modifier = modifier.fillMaxWidth()
     ) {
         Column(
@@ -991,8 +1120,10 @@ internal fun CityPickerDialog(
     currentCity: String,
     onUseGps: () -> Unit,
     onCitySelected: (String) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    showSettingsShortcut: Boolean = false
 ) {
+    val context = LocalContext.current
     val cities = remember { listOf("Bandung", "Bogor", "Jakarta", "Depok", "Surabaya", "Yogyakarta") }
 
     AlertDialog(
@@ -1019,12 +1150,29 @@ internal fun CityPickerDialog(
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Gunakan GPS Otomatis", fontWeight = FontWeight.Bold)
                 }
+                if (showSettingsShortcut) {
+                    OutlinedButton(
+                        onClick = {
+                            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                data = Uri.fromParts("package", context.packageName, null)
+                            }
+                            runCatching { context.startActivity(intent) }
+                            onDismiss()
+                        },
+                        shape = CircleShape,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Outlined.Settings, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Buka Pengaturan Izin Lokasi", fontSize = 12.sp)
+                    }
+                }
                 Spacer(modifier = Modifier.height(4.dp))
                 cities.forEach { city ->
                     val isCurrent = city.equals(currentCity, ignoreCase = true)
                     Surface(
                         shape = RoundedCornerShape(12.dp),
-                        color = if (isCurrent) SoftIceTint else Color.Transparent,
+                        color = if (isCurrent) FitCastTheme.colors.softIceTint else Color.Transparent,
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
@@ -1055,6 +1203,15 @@ internal fun NotificationBriefingDialog(
     laundryCount: Int,
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
+    var permissionRequestedNow by remember { mutableStateOf(false) }
+
+    val notifLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) {
+        permissionRequestedNow = true
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -1065,7 +1222,7 @@ internal fun NotificationBriefingDialog(
             )
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
                     text = "${weather?.cityName ?: "Bandung"} ${weather?.temperature?.toInt() ?: 24}°C • Peluang hujan ${weather?.rainProbability ?: 60}%.",
                     fontFamily = PlusJakartaSans,
@@ -1080,6 +1237,29 @@ internal fun NotificationBriefingDialog(
                     fontFamily = PlusJakartaSans,
                     fontSize = 13.sp
                 )
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !permissionRequestedNow) {
+                    val notifMissing = ContextCompat.checkSelfPermission(
+                        context,
+                        Manifest.permission.POST_NOTIFICATIONS
+                    ) != PackageManager.PERMISSION_GRANTED
+                    if (notifMissing) {
+                        Button(
+                            onClick = {
+                                notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            },
+                            shape = CircleShape,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = VoltLime,
+                                contentColor = ObsidianDark
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Outlined.NotificationsActive, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Aktifkan Notifikasi Pagi 06:30", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        }
+                    }
+                }
             }
         },
         confirmButton = {

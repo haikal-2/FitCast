@@ -13,9 +13,9 @@ object WardrobeCategory {
 }
 
 object WarmthLevel {
-    const val LIGHT = "LIGHT"   // Tipis / Adem
-    const val MEDIUM = "MEDIUM" // Sedang
-    const val HEAVY = "HEAVY"   // Tebal / Hangat
+    const val LIGHT = "LIGHT"
+    const val MEDIUM = "MEDIUM"
+    const val HEAVY = "HEAVY"
     val ALL = listOf(LIGHT, MEDIUM, HEAVY)
 }
 
@@ -36,15 +36,23 @@ object ColorTone {
 data class WardrobeItemEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val name: String,
-    val category: String,          // WardrobeCategory
-    val warmthLevel: String,       // WarmthLevel
-    val style: String,             // OutfitStyle
-    val colorHex: String,          // Contoh: "#1E293B"
-    val colorTone: String,         // ColorTone
-    val imagePath: String = "",    // Kosong = pakai ikon bawaan Starter Pack
+    val category: String,
+    val warmthLevel: String,
+    val style: String,
+    val colorHex: String,
+    val colorTone: String,
+    val imagePath: String = "",
     val wearCount: Int = 0,
     val maxWearBeforeWash: Int = 2,
-    val isClean: Boolean = true
+    val isClean: Boolean = true,
+    val materialDetail: String = "",
+    val colorName: String = "",
+    val washCareTip: String = "",
+    val storageLocation: String = "",
+    val suitableWeathers: String = "",
+    val styleTags: String = "",
+    val drawableResName: String = "",
+    val isDraft: Boolean = false
 )
 
 @Entity(tableName = "saved_outfits")
@@ -67,8 +75,8 @@ data class WeatherCacheEntity(
     val feelsLike: Double,
     val humidity: Int,
     val windSpeed: Double,
-    val weatherMain: String,        // Clear, Clouds, Rain, Drizzle, Thunderstorm
+    val weatherMain: String,
     val weatherDescription: String,
-    val rainProbability: Int,       // 0 - 100
+    val rainProbability: Int,
     val lastUpdated: Long = System.currentTimeMillis()
 )

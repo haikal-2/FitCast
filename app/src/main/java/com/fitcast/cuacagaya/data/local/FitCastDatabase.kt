@@ -12,7 +12,7 @@ import com.fitcast.cuacagaya.data.local.entity.WeatherCacheEntity
 
 @Database(
     entities = [WardrobeItemEntity::class, SavedOutfitEntity::class, WeatherCacheEntity::class],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class FitCastDatabase : RoomDatabase() {
@@ -29,7 +29,10 @@ abstract class FitCastDatabase : RoomDatabase() {
                     context.applicationContext,
                     FitCastDatabase::class.java,
                     "fitcast_db"
-                ).build().also { INSTANCE = it }
+                )
+                    .fallbackToDestructiveMigration(dropAllTables = true)
+                    .build()
+                    .also { INSTANCE = it }
             }
         }
     }

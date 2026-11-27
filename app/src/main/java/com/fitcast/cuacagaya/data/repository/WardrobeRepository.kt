@@ -11,10 +11,20 @@ class WardrobeRepository(private val dao: WardrobeDao) {
     val savedOutfits: Flow<List<SavedOutfitEntity>> = dao.getSavedOutfits()
 
     suspend fun addItem(item: WardrobeItemEntity) = dao.insertItem(item)
+    suspend fun updateItem(item: WardrobeItemEntity) = dao.updateItem(item)
     suspend fun deleteItem(item: WardrobeItemEntity) = dao.deleteItem(item)
     suspend fun markItemWashed(id: Long) = dao.markItemWashed(id)
     suspend fun markAllWashed() = dao.markAllWashed()
     suspend fun saveOutfit(outfit: SavedOutfitEntity) = dao.saveOutfit(outfit)
+
+    suspend fun toggleLaundryStatus(item: WardrobeItemEntity) {
+        val updated = if (item.isClean) {
+            item.copy(isClean = false, wearCount = item.maxWearBeforeWash)
+        } else {
+            item.copy(isClean = true, wearCount = 0)
+        }
+        dao.updateItem(updated)
+    }
 
     suspend fun wearItems(items: List<WardrobeItemEntity>) {
         items.forEach { item ->

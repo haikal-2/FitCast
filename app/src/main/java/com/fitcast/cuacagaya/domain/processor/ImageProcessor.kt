@@ -17,6 +17,12 @@ import java.io.File
 import java.io.FileOutputStream
 import kotlin.coroutines.resume
 
+data class DetectedColorSwatch(
+    val name: String,
+    val hex: String,
+    val tone: String
+)
+
 data class ProcessedClothingImage(
     val savedFilePath: String,
     val dominantColorHex: String,
@@ -24,6 +30,36 @@ data class ProcessedClothingImage(
 )
 
 class ImageProcessor(private val context: Context) {
+
+    suspend fun extractColorSwatches(uri: Uri): List<DetectedColorSwatch> = withContext(Dispatchers.IO) {
+        val bitmap = decodeSampledBitmap(uri, maxSize = 480) ?: return@withContext emptyList()
+        val palette = Palette.from(bitmap).maximumColorCount(8).generate()
+        val candidates = listOfNotNull(
+            palette.dominantSwatch,
+            palette.vibrantSwatch,
+            palette.mutedSwatch,
+            palette.darkMutedSwatch,
+            palette.lightMutedSwatch,
+            palette.darkVibrantSwatch
+        ) + palette.swatches.sortedByDescending { it.population }
+
+        val seenHex = mutableSetOf<String>()
+        val result = mutableListOf<DetectedColorSwatch>()
+        for (swatch in candidates) {
+            val hex = String.format("#%06X", 0xFFFFFF and swatch.rgb)
+            if (seenHex.add(hex)) {
+                result.add(
+                    DetectedColorSwatch(
+                        name = describeColorName(swatch.rgb),
+                        hex = hex,
+                        tone = classifyTone(swatch.rgb)
+                    )
+                )
+            }
+            if (result.size >= 4) break
+        }
+        result
+    }
 
     suspend fun processAndSaveClothingPhoto(
         uri: Uri,
@@ -71,19 +107,48 @@ class ImageProcessor(private val context: Context) {
         val palette = Palette.from(bitmap).generate()
         val dominantInt = palette.getDominantColor(Color.DKGRAY)
         val hex = String.format("#%06X", 0xFFFFFF and dominantInt)
+        return hex to classifyTone(dominantInt)
+    }
 
+    private fun classifyTone(colorInt: Int): String {
         val hsv = FloatArray(3)
-        Color.colorToHSV(dominantInt, hsv)
+        Color.colorToHSV(colorInt, hsv)
         val hue = hsv[0]
         val sat = hsv[1]
         val value = hsv[2]
 
-        val tone = when {
+        return when {
             sat < 0.18f || value < 0.22f || (value > 0.88f && sat < 0.25f) -> ColorTone.NEUTRAL
             hue in 0f..65f || hue >= 300f -> ColorTone.WARM
             else -> ColorTone.COOL
         }
-        return hex to tone
+    }
+
+    private fun describeColorName(colorInt: Int): String {
+        val hsv = FloatArray(3)
+        Color.colorToHSV(colorInt, hsv)
+        val hue = hsv[0]
+        val sat = hsv[1]
+        val value = hsv[2]
+
+        if (value < 0.20f) return "Charcoal"
+        if (sat < 0.14f) {
+            return when {
+                value > 0.86f -> "Off-White"
+                value > 0.65f -> "Silver"
+                else -> "Slate"
+            }
+        }
+        return when {
+            hue < 18f || hue >= 342f -> if (value < 0.55f) "Maroon" else "Crimson"
+            hue < 42f -> if (value < 0.6f) "Espresso" else "Sand"
+            hue < 68f -> if (sat < 0.35f) "Cream" else "Mustard"
+            hue < 130f -> if (value < 0.45f) "Dark Moss" else if (sat < 0.45f) "Sage" else "Olive"
+            hue < 195f -> "Teal"
+            hue < 250f -> if (value < 0.48f) "Navy" else "Cobalt"
+            hue < 295f -> "Indigo"
+            else -> "Berry"
+        }
     }
 
     private fun decodeSampledBitmap(uri: Uri, maxSize: Int = 800): Bitmap? {

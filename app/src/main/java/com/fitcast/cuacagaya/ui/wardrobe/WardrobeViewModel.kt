@@ -9,12 +9,37 @@ import com.fitcast.cuacagaya.data.local.entity.WardrobeItemEntity
 import com.fitcast.cuacagaya.data.repository.WardrobeRepository
 import com.fitcast.cuacagaya.domain.processor.DetectedColorSwatch
 import com.fitcast.cuacagaya.domain.processor.ImageProcessor
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+
+enum class MlScanPhase {
+    EMPTY,
+    SCANNING,
+    SCANNED
+}
+
+data class AddItemScanUiState(
+    val phase: MlScanPhase = MlScanPhase.EMPTY,
+    val sourceUri: Uri? = null,
+    val cutoutPreviewPath: String? = null,
+    val scanProgressPercent: Int = 0,
+    val resolutionLabel: String = "1024 × 1024 px",
+    val backgroundRemoved: Boolean = false,
+    val showExtractedToast: Boolean = false
+)
+
+data class RecentlyAddedHighlight(
+    val itemId: Long,
+    val itemName: String,
+    val category: String
+)
 
 class WardrobeViewModel(
     private val repository: WardrobeRepository,
@@ -33,21 +58,121 @@ class WardrobeViewModel(
     private val _detectedSwatches = MutableStateFlow(DEFAULT_PALETTE_SWATCHES)
     val detectedSwatches: StateFlow<List<DetectedColorSwatch>> = _detectedSwatches.asStateFlow()
 
-    fun extractPaletteFromUri(uri: Uri?) {
+    private val _scanState = MutableStateFlow(AddItemScanUiState())
+    val scanState: StateFlow<AddItemScanUiState> = _scanState.asStateFlow()
+
+    private val _recentlyAdded = MutableStateFlow<RecentlyAddedHighlight?>(null)
+    val recentlyAdded: StateFlow<RecentlyAddedHighlight?> = _recentlyAdded.asStateFlow()
+
+    private var scanJob: Job? = null
+
+    fun startPhotoScan(uri: Uri?, removeBg: Boolean = true) {
+        scanJob?.cancel()
         if (uri == null) {
-            _detectedSwatches.value = DEFAULT_PALETTE_SWATCHES
+            resetScanState()
             return
         }
-        viewModelScope.launch {
-            val extracted = imageProcessor.extractColorSwatches(uri)
-            if (extracted.isNotEmpty()) {
-                _detectedSwatches.value = extracted
+
+        scanJob = viewModelScope.launch {
+            _scanState.value = AddItemScanUiState(
+                phase = MlScanPhase.SCANNING,
+                sourceUri = uri,
+                cutoutPreviewPath = null,
+                scanProgressPercent = 12,
+                resolutionLabel = "Memindai...",
+                backgroundRemoved = false,
+                showExtractedToast = false
+            )
+
+            // Smooth staged progress alongside real ML Kit & Palette API inference.
+            val progressJob = launch {
+                delay(320L)
+                _scanState.update { if (it.phase == MlScanPhase.SCANNING) it.copy(scanProgressPercent = 45) else it }
+                delay(480L)
+                _scanState.update { if (it.phase == MlScanPhase.SCANNING) it.copy(scanProgressPercent = 78) else it }
+                delay(520L)
+                _scanState.update { if (it.phase == MlScanPhase.SCANNING) it.copy(scanProgressPercent = 94) else it }
+            }
+
+            val analyzed = imageProcessor.analyzeAndCutoutPreview(uri, removeBackground = removeBg)
+            delay(1550L)
+            progressJob.cancel()
+
+            if (analyzed != null && analyzed.swatches.isNotEmpty()) {
+                _detectedSwatches.value = analyzed.swatches
+            }
+
+            val resLabel = if (analyzed != null && analyzed.widthPx > 0 && analyzed.heightPx > 0) {
+                "${analyzed.widthPx} × ${analyzed.heightPx} px"
+            } else {
+                "1024 × 1024 px"
+            }
+
+            _scanState.value = AddItemScanUiState(
+                phase = MlScanPhase.SCANNED,
+                sourceUri = uri,
+                cutoutPreviewPath = analyzed?.savedFilePath,
+                scanProgressPercent = 100,
+                resolutionLabel = resLabel,
+                backgroundRemoved = removeBg,
+                showExtractedToast = true
+            )
+        }
+    }
+
+    fun replayCurrentScan(removeBg: Boolean = true) {
+        val currentUri = _scanState.value.sourceUri
+        if (currentUri != null) {
+            startPhotoScan(currentUri, removeBg)
+        } else {
+            // Allow interactive scan demonstration even before choosing a device photo.
+            scanJob?.cancel()
+            scanJob = viewModelScope.launch {
+                _scanState.value = AddItemScanUiState(
+                    phase = MlScanPhase.SCANNING,
+                    sourceUri = null,
+                    cutoutPreviewPath = null,
+                    scanProgressPercent = 15,
+                    resolutionLabel = "1024 × 1024 px",
+                    backgroundRemoved = false,
+                    showExtractedToast = false
+                )
+                delay(450L)
+                _scanState.update { it.copy(scanProgressPercent = 48) }
+                delay(520L)
+                _scanState.update { it.copy(scanProgressPercent = 82) }
+                delay(580L)
+                _scanState.update {
+                    it.copy(
+                        phase = MlScanPhase.SCANNED,
+                        scanProgressPercent = 100,
+                        backgroundRemoved = removeBg,
+                        showExtractedToast = true
+                    )
+                }
             }
         }
     }
 
-    fun resetDetectedSwatches() {
+    fun dismissScanToast() {
+        _scanState.update { it.copy(showExtractedToast = false) }
+    }
+
+    fun resetScanState() {
+        scanJob?.cancel()
+        _scanState.value = AddItemScanUiState(phase = MlScanPhase.EMPTY)
         _detectedSwatches.value = DEFAULT_PALETTE_SWATCHES
+    }
+
+    fun addCustomSwatch(swatch: DetectedColorSwatch) {
+        val current = _detectedSwatches.value
+        if (current.none { it.hex.equals(swatch.hex, ignoreCase = true) }) {
+            _detectedSwatches.value = current + swatch
+        }
+    }
+
+    fun clearRecentlyAdded() {
+        _recentlyAdded.value = null
     }
 
     fun addClothingWithPhoto(
@@ -65,12 +190,18 @@ class WardrobeViewModel(
         suitableWeathers: String = "Hujan Ringan,Berangin",
         styleTags: String = "Casual,Streetwear",
         isDraft: Boolean = false,
-        onFinished: () -> Unit
+        onSaved: (WardrobeItemEntity) -> Unit
     ) {
+        if (_isProcessingImage.value) return
         viewModelScope.launch {
             _isProcessingImage.value = true
+            val currentPreview = _scanState.value.cutoutPreviewPath
             val processed = if (photoUri != null) {
-                imageProcessor.processAndSaveClothingPhoto(photoUri, removeBg)
+                imageProcessor.processAndSaveClothingPhoto(
+                    uri = photoUri,
+                    removeBackground = removeBg,
+                    existingPreviewPath = currentPreview
+                )
             } else null
 
             val defaultStorage = when (category) {
@@ -98,9 +229,17 @@ class WardrobeViewModel(
                 styleTags = styleTags,
                 isDraft = isDraft
             )
-            repository.addItem(item)
+            val insertedId = repository.addItem(item)
+            val savedEntity = item.copy(id = insertedId)
+            if (!isDraft) {
+                _recentlyAdded.value = RecentlyAddedHighlight(
+                    itemId = insertedId,
+                    itemName = savedEntity.name,
+                    category = savedEntity.category
+                )
+            }
             _isProcessingImage.value = false
-            onFinished()
+            onSaved(savedEntity)
         }
     }
 

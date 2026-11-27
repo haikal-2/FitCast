@@ -1,6 +1,13 @@
 package com.fitcast.cuacagaya.ui.navigation
 
 import android.content.Context
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -11,6 +18,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.edit
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
@@ -41,7 +49,7 @@ fun FitCastAppRoot(
     if (showOnboarding) {
         OnboardingScreen(
             onFinish = {
-                prefs.edit().putBoolean("onboarding_done", true).apply()
+                prefs.edit { putBoolean("onboarding_done", true) }
                 showOnboarding = false
             }
         )
@@ -71,6 +79,8 @@ fun FitCastAppRoot(
         NavHost(
             navController = navController,
             startDestination = FitCastTab.HOME.route,
+            enterTransition = { fadeIn(animationSpec = tween(200)) },
+            exitTransition = { fadeOut(animationSpec = tween(160)) },
             modifier = Modifier.fillMaxSize()
         ) {
             composable(FitCastTab.HOME.route) {
@@ -99,10 +109,24 @@ fun FitCastAppRoot(
                     onSelectCity = homeViewModel::refreshWeatherByCity
                 )
             }
-            composable("add_item") {
+            composable(
+                route = "add_item",
+                enterTransition = {
+                    slideInVertically(animationSpec = tween(280), initialOffsetY = { it / 5 }) +
+                        fadeIn(animationSpec = tween(240))
+                },
+                popExitTransition = {
+                    slideOutVertically(animationSpec = tween(240), targetOffsetY = { it / 5 }) +
+                        fadeOut(animationSpec = tween(200))
+                }
+            ) {
                 AddItemScreen(
                     viewModel = wardrobeViewModel,
-                    onBack = { navController.popBackStack() }
+                    onBack = { navController.popBackStack() },
+                    onNavigateToWardrobe = {
+                        navController.popBackStack()
+                        navigateToTab(FitCastTab.WARDROBE.route)
+                    }
                 )
             }
             composable(FitCastTab.LAUNDRY.route) {
@@ -114,7 +138,17 @@ fun FitCastAppRoot(
                     onSelectCity = homeViewModel::refreshWeatherByCity
                 )
             }
-            composable("about") {
+            composable(
+                route = "about",
+                enterTransition = {
+                    slideInHorizontally(animationSpec = tween(240), initialOffsetX = { it / 4 }) +
+                        fadeIn(animationSpec = tween(220))
+                },
+                popExitTransition = {
+                    slideOutHorizontally(animationSpec = tween(220), targetOffsetX = { it / 4 }) +
+                        fadeOut(animationSpec = tween(180))
+                }
+            ) {
                 AboutScreen(onBack = { navController.popBackStack() })
             }
         }
